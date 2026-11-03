@@ -25,6 +25,8 @@ The pedal is a Zynq-7010 (Digilent Zybo Z7-10).
                                         │ M_AXI_GP0 (FCLK0, 50 MHz) via SmartConnect
                          ┌──────────────┴── PS (ARM Cortex-A9) ─┐
                          │ fx_cli: codec setup + fx> command line │── UART1 ── USB serial
+                         │         + front panel                  │── SPI1 (MIO, Pmod JF) ── TFT
+                         │                                        │◄─ GPIO (EMIO, JC/JD/JE) ── 5 encoders
                          │ I2C0 (EMIO) ──────────────────────────────── codec registers
                          └───────────────────────────────────────┘
 ```
@@ -166,6 +168,6 @@ XC7Z010 has 80 DSP48 slices and 17,600 LUTs.
 | `gen/rtl/` | `effect_bank.sv`, `router_patch.svh`, and generated wrappers |
 | `constraints/` | pins and clock groups |
 | `vivado/`, `vitis/` | build scripts |
-| `sw/fx_cli/` | ARM firmware |
+| `sw/fx_cli/` | ARM firmware: the command line and the front panel |
 | `scripts/` | `fx.py` and its library |
 | `sim/` | testbenches and host tests |

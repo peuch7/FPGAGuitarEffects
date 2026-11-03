@@ -48,6 +48,7 @@ PATH:
 | J12 PROG/UART (micro-USB) | your PC | programming and the serial command line, on one cable |
 | LINE IN (blue jack) | the guitar, through a **mono-to-dual-mono adapter** | the input is the codec's right channel; a mono plug grounds it |
 | HPH OUT (black jack) | headphones or an amp input | |
+| Pmods JC, JD, JE, JF | optional: the front panel, a TFT and 5 encoders | wiring in [docs/front_panel.md](docs/front_panel.md) |
 
 ### Hardware safety
 
@@ -101,6 +102,17 @@ second of the pair.
 vivado -mode batch -source vivado/build.tcl            # 15-30 minutes
 vitis -s vitis/create_workspace.py                     # a few minutes
 xsdb vitis/run.tcl                                     # program the board and start the app
+```
+
+**On Windows, `build_all.bat` does all three in one go**, from any folder. It calls
+the tools' `settings64.bat` first (from `C:\AMDDesignTools\2026.1`, or the folder in
+`FX_TOOLS`), and stops at the first step that fails:
+
+```bat
+build_all                 :: Vivado, Vitis, then program the board
+build_all --force         :: recreate the Vivado project first (after block design or XDC changes)
+build_all --sw            :: skip Vivado: only the firmware changed
+build_all --no-run        :: build without programming
 ```
 
 **`vivado/build.tcl`:**
@@ -244,6 +256,8 @@ are generated too.
   - `vivado -mode batch -source vivado/build.tcl`
   - `vitis -s vitis/create_workspace.py --update`
   - `xsdb vitis/run.tcl`
+
+  On Windows, `build_all` runs all three.
 - **Track B:**
   1. In the open Vivado project, run `source <repo>/gen/vivado/sources.tcl` in the
      Tcl Console. This adds and removes the effect files.

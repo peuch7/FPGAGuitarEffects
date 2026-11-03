@@ -63,6 +63,14 @@ there; the *if not* notes and INSTALL.md's troubleshooting table say where to lo
         the firmware's fallback. Covered by the Vivado log instead: the block design
         put the controller at `0x4000_0000`, so the firmware gets the right address
         either way.
+- [ ] **Since the front panel was added, rebuild both.** The block design changed (SPI1,
+      EMIO GPIO), and an existing project keeps its old one:
+      `vivado -mode batch -source vivado/build.tcl -tclargs --force`, then
+      `vitis -s vitis/create_workspace.py --update`. Or both in one go:
+      `build_all --force --no-run`.
+  - [ ] Block RAM still **60**, WNS still ≥ 0 (the panel adds no PL logic). WNS: ____
+  - [ ] The critical-warning scan above shows nothing new.
+  - [ ] Vivado placed `GPIO_0_0_tri_io[0]` .. `[14]` (no UCIO-1 or NSTD-1 errors).
 - [ ] Optional, for running without a PC later:
       `bootgen -image vitis/boot.bif -arch zynq -o build/BOOT.BIN -w`
 
@@ -76,54 +84,82 @@ there; the *if not* notes and INSTALL.md's troubleshooting table say where to lo
       channels)
 - [ ] A laptop with a serial terminal (PuTTY or Tera Term) and the built files, if the
       build PC isn't coming
+- [ ] Optional: the front panel (TFT and 5 encoders), wired as in
+      [front_panel.md](front_panel.md)
 
 ## 1. Power-up, no program yet
 
-- [ ] With the power **off**: JP5 on **JTAG**, JP6 on **USB**, USB cable in PROG/UART.
+- [x] With the power **off**: JP5 on **JTAG**, JP6 on **USB**, USB cable in PROG/UART.
       Nothing in the audio jacks yet.
-- [ ] Power on. The power-good LED lights; the FPGA DONE LED stays off.
-- [ ] The PC sees a new serial port (Windows: *Device Manager → Ports*). Note it: COM__
-- [ ] Open the terminal on that port at **115200, 8N1, no flow control**, **before**
+- [x] Power on. The power-good LED lights; the FPGA DONE LED stays off.
+- [x] The PC sees a new serial port (Windows: *Device Manager → Ports*). Note it: COM__
+- [x] Open the terminal on that port at **115200, 8N1, no flow control**, **before**
       programming, so you see the boot messages.
 
 ## 2. Program and boot
 
-- [ ] `xsdb vitis/run.tcl`, or *Run* `fx_cli` from the Vitis GUI.
-- [ ] The FPGA DONE LED lights.
-- [ ] The terminal shows:
-  - [ ] `configuring the SSM2603 codec... ok`.
+- [x] `xsdb vitis/run.tcl`, or *Run* `fx_cli` from the Vitis GUI.
+- [x] The FPGA DONE LED lights.
+- [x] The terminal shows:
+  - [x] `configuring the SSM2603 codec... ok`.
         *If not* (`NO ANSWER on I2C`): stop. Check the `IIC_0_0` pins and that I2C0
         is on EMIO.
-  - [ ] `reading the router's patch memory (stuck here = no bitstream)... ok`.
+  - [x] `reading the router's patch memory (stuck here = no bitstream)... ok`.
         *If it stops here*: the FPGA isn't programmed with this bitstream.
-  - [ ] The banner, `chain: empty (dry signal)`, and the `fx>` prompt.
-- [ ] LEDs:
-  - [ ] **LD3 on** (audio out of reset).
-  - [ ] **LD0 and LD1 off** (no overrun, no timeout).
-  - [ ] LD2 is very dim now; it gets brighter with more effects in the chain.
+  - [x] The banner, `chain: empty (dry signal)`, and the `fx>` prompt.
+- [x] LEDs:
+  - [x] **LD3 on** (audio out of reset).
+  - [x] **LD0 and LD1 off** (no overrun, no timeout).
+  - [x] LD2 is very dim now; it gets brighter with more effects in the chain.
 
 ## 3. The command line, before any audio
 
-- [ ] `help` lists the commands.
-- [ ] `status` shows `audio: flowing, about 48000 samples/s`. The I2S clocks run
+- [x] `help` lists the commands.
+- [x] `status` shows `audio: flowing, about 48000 samples/s`. The I2S clocks run
       without any input, so this proves MCLK, the I2S logic and the router are alive.
       *If NOT flowing*: LD3? The clocking wizard isn't locked, or the PS didn't
       release reset.
-- [ ] `fx` lists 6 effects. `fx delay` shows ranges and defaults.
-- [ ] `preset` lists `ambient`, `clean [power-on]`, `pedalboard`.
-- [ ] `add delay`, then `show`: chain has 1 stage, router on bank 1, no flags. Then
+- [x] `fx` lists 6 effects. `fx delay` shows ranges and defaults.
+- [x] `preset` lists `ambient`, `clean [power-on]`, `pedalboard`.
+- [x] `add delay`, then `show`: chain has 1 stage, router on bank 1, no flags. Then
       `clear`.
-- [ ] Typo handling: `add nope` and `set 9 mix=0.5` print errors and change nothing.
+- [x] Typo handling: `add nope` and `set 9 mix=0.5` print errors and change nothing.
+
+## 3b. Front panel (if it's wired)
+
+Wire it with the power off ([front_panel.md](front_panel.md#wiring)).
+
+- [ ] The boot does **not** print `front panel NOT started`, and the screen shows the
+      home screen: the hint bar, `MASTER` with the preset name, the chain, and the
+      badge at the top right.
+  - *If it printed that*: the XSA predates the panel. Rebuild (see *Before the lab*).
+  - *Backlight on but a white or black screen*: the troubleshooting table in
+    front_panel.md.
+- [ ] **Main encoder:** each click moves the highlight one row, both ways. Click on a
+      stage opens its menu; hold goes back.
+- [ ] **Knobs 1 to 4:** on a stage row, each changes the box above it, one step per
+      click. Pushed in while turning, it moves in fine steps. Held, it goes back to the
+      default.
+  - *Wrong way*: set its bit in `PANEL_ENC_REVERSE`. *Every other click*:
+    `PANEL_STEPS_PER_DETENT` = 2. Note what you changed: ____
+- [ ] **Panel → serial:** turn a knob. About half a second after it stops, the
+      terminal shows `[panel] set ...`, and `show` lists the new value.
+- [ ] **Serial → panel:** `add delay` over serial appears on the screen at once;
+      `rm delay` removes it.
+- [ ] Paste several commands at once into the terminal while turning a knob: none is
+      lost or garbled.
 
 ## 4. First sound, with a known-good source
 
-- [ ] Headphones in HPH OUT, **volume low** (or an amp input with the amp turned
+- [x] Headphones in HPH OUT, **volume low** (or an amp input with the amp turned
       down).
-- [ ] Phone or laptop playing music into **LINE IN** (blue) over the stereo cable.
-- [ ] You hear the music, clean. It's mono, identical in both ears. Bring the volume
+- [x] Phone or laptop playing music into **LINE IN** (blue) over the stereo cable.
+- [x] You hear the music, clean. It's mono, identical in both ears. Bring the volume
       up slowly.
   - *If silent*: `status`? Is the cable in LINE IN, not MIC? Try `gain 12`.
 - [ ] `vol -10`, then `vol 0`: the volume changes, with no clicks or noise.
+- [ ] If the panel is wired: on the MASTER row, knob 2 changes the volume one dB per
+      click, smoothly, and knob 1 the input gain.
 - [ ] `gain 6`, then `gain 0`: the input level changes.
 
 ## 5. Guitar
@@ -165,6 +201,12 @@ must stay off throughout.
 - [ ] `preset ambient`: chorus into delay into reverb.
 - [ ] `mv reverb 1`, `insert 2 chorus`, `rm delay`: each change is audible and `show`
       matches.
+- [ ] **Bypass:** `preset pedalboard`, then `bypass delay` while repeats are sounding.
+      The delay stops, and `show` lists it `(bypassed)`. `bypass delay` again: it comes
+      back with the same settings.
+- [ ] If the panel is wired: the same from the stage menu (BYPASS / TURN ON), and MOVE,
+      REMOVE and + ADD EFFECT each do what the matching command does. The terminal
+      echoes each one as a `[panel]` command.
 - [ ] **Worst case:** `clear`, then add all six effects (`add overdrive`,
       `add distortion`, `add delay`, `add echo`, `add chorus`, `add reverb`).
       `status` shows **no OVERRUN**, LD0 stays off, and LD2 is brighter.
@@ -176,7 +218,7 @@ must stay off throughout.
 
 - [ ] Rerun the app without reprogramming (`xsdb vitis/run.tcl` again, or *Run*). The
       banner's chain is whatever you last set: it's read back from the FPGA.
-- [ ] Power-cycle the board. Everything is gone (JTAG mode). Reprogram, and the chain
+- [x] Power-cycle the board. Everything is gone (JTAG mode). Reprogram, and the chain
       starts from `clean` again.
 - [ ] Optional, SD boot: copy `build/BOOT.BIN` to a FAT32 card, power off, set JP5 to
       **SD**, power on. The banner appears in the terminal, and the guitar plays

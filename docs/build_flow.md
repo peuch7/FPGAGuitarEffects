@@ -15,6 +15,23 @@ sw/fx_cli/*.c, gen/sw/* ──────────────────�
                                                                    └─► vitis/run.tcl (JTAG)  or  vitis/boot.bif (SD card)
 ```
 
+## `build_all.bat` (Windows)
+
+The whole Track A flow in one command, from the repo root whatever folder it is
+started from:
+1. It calls `Vivado\settings64.bat` and `Vitis\settings64.bat` from `FX_TOOLS`
+   (default `C:\AMDDesignTools\2026.1`).
+2. `vivado -mode batch -notrace -source vivado/build.tcl` (with `--force` and
+   `--jobs N` passed through).
+3. `vitis -s vitis/create_workspace.py --update`. `--update` is harmless on a first run
+   and keeps the platform in step with whichever `.xsa` is there.
+4. `xsdb vitis/run.tcl`.
+
+It deletes `build/design_1_wrapper.xsa` and `fx_cli.elf` before the steps that make
+them, and checks they exist afterwards. A failed step can't leave a stale file that
+looks like a success. `--sw` skips step 2, and `--no-run` skips step 4. On failure it
+stops and says what to check.
+
 ## `vivado/create_project.tcl`
 
 **If the project doesn't exist yet,** it:
@@ -34,7 +51,9 @@ sw/fx_cli/*.c, gen/sw/* ──────────────────�
 
 **If the project already exists,** it opens it instead, re-sources `sources.tcl` (so
 effects added or removed with `fx.py` are picked up), and refreshes the module
-references. Pass `-tclargs --force` to delete and recreate it.
+references. Pass `-tclargs --force` to delete and recreate it. **Do that after any
+change to `design_1.tcl` or the XDC**: an existing project keeps its old block
+design.
 
 ## The block design
 
@@ -48,7 +67,7 @@ PS's pins would be configured for the wrong supply.
 
 | cell | IP | configuration |
 |---|---|---|
-| `processing_system7_0` | Zynq PS | board preset; `M_AXI_GP0` on; FCLK0 = 50 MHz; UART1 on; I2C0 on EMIO |
+| `processing_system7_0` | Zynq PS | board preset; `M_AXI_GP0` on; FCLK0 = 50 MHz; UART1 on; I2C0 on EMIO; SPI1 on MIO 10..15 and GPIO (MIO, plus 15 EMIO lines) for the front panel |
 | `rst_ps7_0_50M` | Processor System Reset | FCLK0 domain, from `FCLK_RESET0_N` |
 | `clk_wiz_0` | Clocking Wizard | 125 MHz in (`sys_clock`), `clk_out1` = 12.288 MHz, `locked` out, no reset input |
 | `rst_audio` | Processor System Reset | MCLK domain, from `FCLK_RESET0_N`, gated by `clk_wiz_0/locked` |
@@ -69,7 +88,8 @@ PS's pins would be configured for the wrong supply.
 | `axi_bram_ctrl_0/BRAM_PORTA` | `router_pl_0/BRAM_PORTA` (interface) |
 | `PS M_AXI_GP0` → `axi_smc/S00_AXI`; `axi_smc/M00_AXI` → `axi_bram_ctrl_0/S_AXI` | AXI |
 | `processing_system7_0/IIC_0` | `IIC_0_0` (interface port; the wrapper adds IOBUFs: `IIC_0_0_scl_io`, `IIC_0_0_sda_io`) |
-| ports | `sys_clock` in; `ac_bclk`, `ac_mclk`, `ac_muten`, `ac_pbdat`, `ac_pblrc`, `ac_reclrc` out; `ac_recdat` in; `led[3:0]` out |
+| `processing_system7_0/GPIO_0` | `GPIO_0_0` (interface port, 15 EMIO lines; the wrapper adds IOBUFs: `GPIO_0_0_tri_io[14:0]`, the encoders) |
+| ports | `sys_clock` in; `ac_bclk`, `ac_mclk`, `ac_muten`, `ac_pbdat`, `ac_pblrc`, `ac_reclrc` out; `ac_recdat` in; `led[3:0]` out; `GPIO_0_0_tri_io[14:0]` |
 
 **Instance names matter.** The XDC's clock groups name `clk_fpga_0` and
 `clk_out1_design_1_clk_wiz_0_0`, and the firmware expects the BRAM controller at
@@ -86,8 +106,10 @@ PS's pins would be configured for the wrong supply.
 ## `constraints/zybo_z7_10.xdc`
 
 It holds:
-- **pins** for `sys_clock` (K17), the codec, the codec's I2C and the LEDs (from
-  Digilent's master XDC);
+- **pins** for `sys_clock` (K17), the codec, the codec's I2C, the LEDs and the front
+  panel's encoders on Pmods JC, JD and JE, with `PULLUP true` (from Digilent's master
+  XDC). The panel's display is on Pmod JF, which is MIO: the PS configures those pins,
+  and the XDC has no lines for them;
 - **one timing constraint:** FCLK0 and MCLK are asynchronous clock groups.
 
 That is safe because the only logic crossing between them is the dual-port patch RAM

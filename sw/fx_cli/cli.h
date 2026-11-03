@@ -9,8 +9,16 @@
 
 void cli_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
-/* Read one line with echo and backspace. Returns its length, or -1 at end of input. */
-int cli_readline(char *buf, size_t len);
+/* The line editor, one received character at a time: echo, backspace, and on
+ * Enter run the line and print the next prompt. */
+void cli_feed(int c);
+
+/* "fx> " and whatever has been typed of the next line. */
+void cli_prompt(void);
+
+/* A line from elsewhere (the front panel), printed over the prompt line, which
+ * is then put back with what had been typed. */
+void cli_note(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 /* Run one command line. */
 void cli_exec(char *line);

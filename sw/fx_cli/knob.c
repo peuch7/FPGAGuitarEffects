@@ -90,6 +90,15 @@ static int is_raw_text(const char *s, int *base)
     return all_digits(p, &q, 0) && *q == '\0';
 }
 
+static double natural_to_raw(const fx_knob_t *k, double v)
+{
+    v = (v - k->offset) / k->factor;
+    if (k->scale == FX_SCALE_Q16)
+        v *= (double)FX_KNOB_MAX;
+    /* rint() rounds half to even in the default mode: Python's round(). */
+    return rint(v);
+}
+
 int knob_parse(const fx_knob_t *k, const char *text, uint16_t *bits, const char **err)
 {
     char buf[32];
@@ -115,11 +124,7 @@ int knob_parse(const fx_knob_t *k, const char *text, uint16_t *bits, const char 
         v = strtod(buf, NULL);
         if (percent)
             v /= 100.0;
-        v = (v - k->offset) / k->factor;
-        if (k->scale == FX_SCALE_Q16)
-            v *= (double)FX_KNOB_MAX;
-        /* rint() rounds half to even in the default mode: Python's round(). */
-        v = rint(v);
+        v = natural_to_raw(k, v);
         if (!(v >= -1e9 && v <= 1e9)) {        /* also catches inf and nan */
             *err = "out of range";
             return -1;
@@ -188,4 +193,21 @@ void knob_format(const fx_knob_t *k, uint16_t bits, char *buf, size_t len)
         }
     }
     fmt_fixed(buf, len, knob_natural(k, bits), decimals);
+}
+
+uint16_t knob_from_natural(const fx_knob_t *k, double v)
+{
+    double raw = natural_to_raw(k, v);
+    if (!(raw >= (double)k->min))           /* also catches nan */
+        return k->min;
+    return raw > (double)k->max ? k->max : (uint16_t)raw;
+}
+
+void knob_format_exact(const fx_knob_t *k, uint16_t bits, char *buf, size_t len)
+{
+    const char *err;
+    uint16_t back;
+    knob_format(k, bits, buf, len);
+    if (knob_parse(k, buf, &back, &err) || back != bits)
+        snprintf(buf, len, "%u", (unsigned)bits);
 }

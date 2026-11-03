@@ -27,6 +27,7 @@ only source.
   Zynq PS (ARM) --- M_AXI_GP0 (FCLK0, 50 MHz) --- SmartConnect --- AXI BRAM Controller +   0x4000_0000, 4 KB
       |  UART1: the fx> command line (sw/fx_cli)
       +- I2C0 (EMIO): codec registers
+      +- SPI1 + GPIO: front panel, a 480x320 TFT and 5 encoders (docs/front_panel.md)
 ```
 
 - **Audio never touches the ARM.** Each sample goes through the effects listed in
@@ -52,7 +53,7 @@ only source.
 | `constraints/zybo_z7_10.xdc` | pins and clock groups | hand-written |
 | `vivado/` | `create_project.tcl`, `design_1.tcl` (block design), `build.tcl` | hand-written |
 | `vitis/` | `create_workspace.py` (platform + app), `run.tcl` (program over JTAG) | hand-written |
-| `sw/fx_cli/` | the bare-metal CLI app: codec setup, patch editing, command line | hand-written, effect-agnostic |
+| `sw/fx_cli/` | the bare-metal app: codec setup, patch editing, the command line and the front panel | hand-written, effect-agnostic |
 | `scripts/fx.py`, `scripts/fxlib/` | the effect manager and code generator, and its tests | hand-written |
 | `sim/` | testbenches and checks that run without a board (see below) | hand-written |
 | `build/` | Vivado project, Vitis workspace, simulation output | tool output, ignored |
@@ -106,9 +107,13 @@ fx> set delay mix=40%          0.4 / 40% are natural units, 26214 is the raw 16-
 fx> mv chorus 1                reorder
 fx> rm 2                       remove by position or name
 fx> fx delay                   knobs, ranges, units, defaults
+fx> bypass delay               out of the signal path, knobs kept; again to put it back
 fx> show / status              the chain, router flags, whether audio is flowing
 fx> gain 6 / vol -10           codec line-in gain, headphone volume (dB)
 ```
+
+The front panel does the same with a screen and five knobs, and the two stay in sync:
+see [docs/front_panel.md](docs/front_panel.md).
 
 The board LEDs show the router's state:
 - LD0: overrun (the patch is too slow).
@@ -124,6 +129,7 @@ make -C sim check      # specs, gen/ freshness, Verilator lint, each effect thro
 make -C sim audio      # pin to pin: codec model -> i2s_rx -> router -> i2s_tx -> codec model
 make -C sim delay      # regression: shortening the delay while it runs
 make -C sim cli        # the CLI firmware on the host against a fake patch memory
+make -C sim ui         # the front panel on the host: scripted knobs, screenshots
 make -C sim gen-tests  # unit tests of fx.py, including adding effects end to end (needs pytest)
 ```
 

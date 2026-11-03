@@ -6,6 +6,7 @@
 #                                 ^ BRAM_PORTA (patch memory, its own clock)
 #   PS7 M_AXI_GP0 (FCLK0 50 MHz) -> axi_smc -> axi_bram_ctrl_0 ----+
 #   PS7 I2C0 (EMIO) -> IIC_0_0 -> codec registers
+#   PS7 SPI1 (MIO 10..15, Pmod JF) -> front panel TFT; GPIO EMIO 0..14 <- GPIO_0_0 <- encoders
 #
 # Audio never crosses a clock domain: the I2S modules and the router all run on
 # MCLK (256 clocks per 48 kHz sample). The only crossing is the patch memory,
@@ -63,16 +64,26 @@ foreach {param want} {PCW_PRESET_BANK0_VOLTAGE {LVCMOS 3.3V} PCW_PRESET_BANK1_VO
         error "fx: $param is '$got', expected '$want'. The Zybo Z7 board preset was not applied; check the board files (INSTALL.md)."
     }
 }
+# SPI1 and GPIO are the front panel (docs/front_panel.md): the TFT on SPI1 at
+# MIO 10..15 (Pmod JF) with DC and RST on MIO 0 and 9, and the five encoders on
+# 15 EMIO GPIO lines (Pmods JC, JD, JE; pins in the XDC).
 set_property -dict [list \
     CONFIG.PCW_USE_M_AXI_GP0             {1} \
     CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ  {50} \
     CONFIG.PCW_UART1_PERIPHERAL_ENABLE   {1} \
     CONFIG.PCW_I2C0_PERIPHERAL_ENABLE    {1} \
     CONFIG.PCW_I2C0_I2C0_IO              {EMIO} \
+    CONFIG.PCW_SPI1_PERIPHERAL_ENABLE    {1} \
+    CONFIG.PCW_SPI1_SPI1_IO              {MIO 10 .. 15} \
+    CONFIG.PCW_GPIO_MIO_GPIO_ENABLE      {1} \
+    CONFIG.PCW_GPIO_EMIO_GPIO_ENABLE     {1} \
+    CONFIG.PCW_GPIO_EMIO_GPIO_IO         {15} \
 ] $ps7
 
 create_bd_intf_port -mode Master -vlnv xilinx.com:interface:iic_rtl:1.0 IIC_0_0
 connect_bd_intf_net [get_bd_intf_ports IIC_0_0] [get_bd_intf_pins processing_system7_0/IIC_0]
+create_bd_intf_port -mode Master -vlnv xilinx.com:interface:gpio_rtl:1.0 GPIO_0_0
+connect_bd_intf_net [get_bd_intf_ports GPIO_0_0] [get_bd_intf_pins processing_system7_0/GPIO_0]
 
 set rst_axi [create_bd_cell -type ip -vlnv [fx_vlnv proc_sys_reset] rst_ps7_0_50M]
 connect_bd_net [get_bd_pins processing_system7_0/FCLK_CLK0] \

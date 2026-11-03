@@ -5,6 +5,7 @@
 #   make -C sim audio      I2S pin-to-pin: codec model -> i2s_rx -> router -> i2s_tx -> codec model
 #   make -C sim delay      regression: shortening the delay while it runs
 #   make -C sim cli        the CLI firmware on the host, against a fake patch memory
+#   make -C sim ui         the front panel on the host: scripted encoders, screenshots
 #   make -C sim gen-tests  unit tests of the generator (needs pytest)
 #
 # Needs Verilator 5 (--timing), a C compiler and Python 3.
@@ -14,9 +15,9 @@ BUILD   := $(ROOT)/build/sim
 PYTHON  ?= python3
 VFLAGS  := --binary --timing -j 0 -Wno-fatal -Wno-lint -Wno-style
 
-.PHONY: all check audio delay cli gen-tests clean
+.PHONY: all check audio delay cli ui gen-tests clean
 
-all: check audio delay cli gen-tests
+all: check audio delay cli ui gen-tests
 
 check:
 	cd $(ROOT) && $(PYTHON) scripts/fx.py check
@@ -36,6 +37,9 @@ delay:
 
 cli:
 	cd $(ROOT) && $(PYTHON) sim/host/test_cli.py
+
+ui:
+	cd $(ROOT) && $(PYTHON) sim/host/test_ui.py
 
 gen-tests:
 	cd $(ROOT) && $(PYTHON) -m pytest -q scripts/tests

@@ -16,6 +16,7 @@
 typedef struct {
     const fx_effect_t *fx;
     uint16_t           knobs[FX_N_KNOBS];
+    uint8_t            bypass;    /* kept in the shadow only: not written to the router */
 } patch_stage_t;
 
 typedef struct {
@@ -28,7 +29,8 @@ typedef enum {
     PATCH_NO_AUDIO = 1,   /* written and selected, but no sample has run since: audio stopped? */
 } patch_result_t;
 
-/* Reads the active bank back, so the shadow starts as whatever the router runs. */
+/* Reads the active bank back, so the shadow starts as whatever the router runs.
+ * Bypassed stages were never written there, so they don't survive a restart. */
 void patch_init(volatile uint32_t *base);
 
 const patch_t *patch_current(void);

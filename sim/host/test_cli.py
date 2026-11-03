@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Host tests for the CLI firmware (sw/fx_cli), against a fake patch memory.
 
-Builds sw/fx_cli with sim/host/host_platform.c in place of board.c/codec.c,
+Builds sw/fx_cli with sim/host/host_*.c in place of board.c, codec.c and panel_zynq.c,
 types commands at it, and checks the words left in patch memory against what
 the generator says that chain must look like (fxlib.routermap.bank_writes,
 the same stores the ARM's router_map.h makes). Also checks that the
@@ -27,7 +27,8 @@ from fxlib.spec import SpecError  # noqa: E402
 
 CFLAGS = ["-std=c11", "-D_DEFAULT_SOURCE", "-Wall", "-Wextra", "-Werror", "-O1",
           "-I", str(ROOT / "sw" / "fx_cli"), "-I", str(ROOT / "gen" / "sw")]
-FIRMWARE = ["cli.c", "knob.c", "patch.c", "main.c"]
+FIRMWARE = ["cli.c", "chain.c", "knob.c", "patch.c", "main.c", "ui.c", "lcd.c"]
+HOST = ["host_platform.c", "host_panel.c"]
 
 project = Project()
 SPECS = {s.name: (s, i) for s, i in project.effects()}
@@ -46,7 +47,7 @@ def build(work: Path) -> tuple:
     kc = work / "knob_check"
     common = [str(ROOT / "gen" / "sw" / "fx_table.c"), "-lm"]
     subprocess.run(["cc", *CFLAGS, "-o", str(cli), *[str(ROOT / "sw" / "fx_cli" / f) for f in FIRMWARE],
-                    str(ROOT / "sim" / "host" / "host_platform.c"), *common], check=True)
+                    *[str(ROOT / "sim" / "host" / f) for f in HOST], *common], check=True)
     subprocess.run(["cc", *CFLAGS, "-o", str(kc), str(ROOT / "sw" / "fx_cli" / "knob.c"),
                     str(ROOT / "sim" / "host" / "knob_check.c"), *common], check=True)
     return cli, kc
@@ -101,11 +102,12 @@ def main() -> int:
 
     # 3. Bad commands change nothing.
     bad = ["add nope", "add delay", "add delay", "set 5 mix=0.1", "set delay nope=1",
-           "set delay mix=2.0", "set delay delay_samples=60000", "rm 9", "mv 1 9", "frobnicate"]
+           "set delay mix=2.0", "set delay delay_samples=60000", "rm 9", "mv 1 9", "frobnicate",
+           "bypass 9", "bypass delay maybe"]
     out, mem = run(cli, work, ["clear"] + bad)
     check(active_chain_ok(mem, [stage("delay")]), "rejected commands leave the chain alone")
     for msg in ("no effect 'nope'", "already in the chain", "not in the chain", "has no knob",
-                "outside", "unknown command"):
+                "outside", "unknown command", "usage: bypass"):
         check(msg in out, f"error message: {msg!r}")
 
     # 4. At boot the CLI shows whatever the BRAM holds (the bitstream's power-on patch).
@@ -129,6 +131,17 @@ def main() -> int:
     # 6. The full chain fits; an 8th stage would not (only 6 effects exist, all once).
     out, mem = run(cli, work, ["clear"] + [f"add {n}" for n in SPECS])
     check(active_chain_ok(mem, [stage(n) for n in SPECS]), "every effect in one chain")
+
+    # 6b. Bypass: the stage leaves patch memory but stays in the chain, knobs and all.
+    out, mem = run(cli, work, ["clear", "add delay mix=0.3", "add reverb", "bypass delay"])
+    check(active_chain_ok(mem, [stage("reverb")]) and "(bypassed)" in out and "1 bypassed" in out,
+          "bypass: the stage leaves patch memory, show still lists it")
+    out, mem = run(cli, work, ["clear", "add delay mix=0.3", "add reverb", "bypass 1", "add delay",
+                               "set delay feedback=0.2", "bypass delay off"])
+    check(active_chain_ok(mem, [stage("delay", mix=0.3, feedback=0.2), stage("reverb")])
+          and "already in the chain" in out, "bypass off: back in place, with knobs set while bypassed")
+    out, mem = run(cli, work, ["clear", "add delay", "bypass delay", "bypass delay"])
+    check(active_chain_ok(mem, [stage("delay")]), "bypass with no on/off toggles")
 
     # 7. Knob parsing: C and Python agree, rounding and ranges included.
     rng = random.Random(7)

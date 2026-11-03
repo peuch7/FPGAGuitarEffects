@@ -7,8 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "chain.h"
 #include "knob.h"
-#include "patch.h"
 #include "fx_platform.h"
 #include "router_map.h"
 
@@ -25,44 +25,75 @@ void cli_printf(const char *fmt, ...)
         fx_putchar(*p);
 }
 
-int cli_readline(char *buf, size_t len)
+/* The line being typed. It is fed one character at a time, so the main loop
+ * can serve the front panel between keystrokes. */
+static char     g_line[CLI_LINE_MAX];
+static size_t   g_len;
+static int      g_prev_cr;
+static int      g_esc;            /* 1: just after ESC; 2: inside an ESC [ sequence */
+static int      g_prompted;       /* the prompt is on screen, the cursor at the end of the line */
+
+void cli_prompt(void)
 {
-    static int prev_cr;
-    size_t n = 0;
-    for (;;) {
-        int c = fx_getchar();
-        if (c < 0) {
-            buf[n] = '\0';
-            return n ? (int)n : -1;
-        }
-        if (c == '\n' && prev_cr) {       /* the \n of a \r\n: the line already ended */
-            prev_cr = 0;
-            continue;
-        }
-        prev_cr = (c == '\r');
-        if (c == '\r' || c == '\n') {
-            fx_putchar('\n');
-            buf[n] = '\0';
-            return (int)n;
-        }
-        if (c == 0x08 || c == 0x7F) {     /* backspace, delete */
-            if (n) {
-                --n;
-                cli_printf("\b \b");
-            }
-        } else if (c == 0x1B) {           /* escape sequence (arrows, Delete): drop it */
-            if (fx_getchar() == '[') {
-                /* CSI: parameter bytes, then one final byte in 0x40..0x7E */
-                int c2;
-                do {
-                    c2 = fx_getchar();
-                } while (c2 >= 0x20 && c2 < 0x40);
-            }
-        } else if (c >= 0x20 && c < 0x7F && n + 1 < len) {
-            buf[n++] = (char)c;
-            fx_putchar((char)c);
-        }
+    g_line[g_len] = '\0';
+    cli_printf("fx> %s", g_line);
+    g_prompted = 1;
+}
+
+void cli_feed(int c)
+{
+    if (g_esc == 1) {                 /* escape sequence (arrows, Delete): drop it */
+        g_esc = c == '[' ? 2 : 0;
+        return;
     }
+    if (g_esc == 2) {                 /* CSI: parameter bytes, then one final byte in 0x40..0x7E */
+        if (!(c >= 0x20 && c < 0x40))
+            g_esc = 0;
+        return;
+    }
+    if (c == '\n' && g_prev_cr) {     /* the \n of a \r\n: the line already ended */
+        g_prev_cr = 0;
+        return;
+    }
+    g_prev_cr = (c == '\r');
+    if (c == '\r' || c == '\n') {
+        fx_putchar('\n');
+        g_line[g_len] = '\0';
+        g_len = 0;
+        g_prompted = 0;
+        cli_exec(g_line);
+        cli_prompt();
+        return;
+    }
+    if (c == 0x08 || c == 0x7F) {     /* backspace, delete */
+        if (g_len) {
+            --g_len;
+            cli_printf("\b \b");
+        }
+    } else if (c == 0x1B) {
+        g_esc = 1;
+    } else if (c >= 0x20 && c < 0x7F && g_len + 1 < sizeof g_line) {
+        g_line[g_len++] = (char)c;
+        fx_putchar((char)c);
+    }
+}
+
+void cli_note(const char *fmt, ...)
+{
+    char buf[CLI_LINE_MAX];
+    size_t n;
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof buf, fmt, ap);
+    va_end(ap);
+    if (!g_prompted) {
+        cli_printf("%s\n", buf);
+        return;
+    }
+    /* Over the prompt line: spaces cover whatever of it is longer than the note. */
+    n = strlen(buf);
+    cli_printf("\r%s%*s\n", buf, n < 4 + g_len ? (int)(4 + g_len - n) : 0, "");
+    cli_prompt();
 }
 
 /* -- output helpers ------------------------------------------------------- */
@@ -76,7 +107,7 @@ static void print_stage(unsigned pos, const patch_stage_t *s)
         knob_format(k, s->knobs[k->slot], v, sizeof v);
         cli_printf(" %s=%s", k->name, v);
     }
-    cli_printf("\n");
+    cli_printf(s->bypass ? " (bypassed)\n" : "\n");
 }
 
 static void print_status(void)
@@ -91,17 +122,39 @@ static void print_status(void)
 static void print_chain(void)
 {
     const patch_t *p = patch_current();
+    unsigned bypassed = 0;
+    for (unsigned i = 0; i < p->n; ++i)
+        bypassed += p->stage[i].bypass;
     if (p->n == 0)
         cli_printf("chain: empty (dry signal)\n");
+    else if (bypassed)
+        cli_printf("chain: %u stage%s, %u bypassed\n", p->n, p->n == 1 ? "" : "s", bypassed);
     else
         cli_printf("chain: %u stage%s\n", p->n, p->n == 1 ? "" : "s");
     for (unsigned i = 0; i < p->n; ++i)
         print_stage(i + 1, &p->stage[i]);
 }
 
-static void apply(const patch_t *p)
+/* Prints why chain.c refused a change; returns nonzero if it did. */
+static int refused(chain_result_t r, const fx_effect_t *fx)
 {
-    if (patch_apply(p) == PATCH_NO_AUDIO)
+    if (CHAIN_APPLIED(r))
+        return 0;
+    if (r == CHAIN_E_DUPLICATE)
+        cli_printf("%s is already in the chain (the router has one of each); use set\n", fx->name);
+    else if (r == CHAIN_E_FULL)
+        cli_printf("the chain is full (%u stages)\n", FX_MAX_STAGES);
+    else
+        cli_printf("%s\n", chain_strerror(r));
+    return 1;
+}
+
+/* After a chain change: the outcome, then the chain. */
+static void report(chain_result_t r)
+{
+    if (refused(r, NULL))
+        return;
+    if (r == CHAIN_NO_AUDIO)
         cli_printf("note: the router has not picked up the new patch; is audio running? "
                    "(it will when samples flow)\n");
     print_chain();
@@ -181,6 +234,7 @@ static void cmd_help(void)
         "  set <pos|fx> knob=value ...   change knobs",
         "  rm <pos|fx>                   remove a stage",
         "  mv <from> <to>                move a stage",
+        "  bypass <pos|fx> [on|off]      out of the signal path, knobs kept (no on/off: toggle)",
         "  clear                         empty chain: dry signal",
         "  preset [name]                 list presets, or load one",
         "  status                        router flags, and whether audio is flowing",
@@ -224,10 +278,10 @@ static void cmd_fx(int argc, char **argv)
 
 static void cmd_add(int argc, char **argv, int at_arg)
 {
-    patch_t p = *patch_current();
+    const patch_t *p = patch_current();
     const fx_effect_t *fx;
     patch_stage_t s;
-    unsigned pos = p.n;
+    unsigned pos = p->n;
     int fx_arg = at_arg ? 2 : 1;
 
     if (argc <= fx_arg) {
@@ -236,94 +290,91 @@ static void cmd_add(int argc, char **argv, int at_arg)
         return;
     }
     if (at_arg) {
-        long v = parse_pos(argv[1], 1, (long)p.n + 1);
+        long v = parse_pos(argv[1], 1, (long)p->n + 1);
         if (v < 0) {
-            cli_printf("position must be 1..%u\n", p.n + 1);
+            cli_printf("position must be 1..%u\n", p->n + 1);
             return;
         }
         pos = (unsigned)v - 1;
     }
     if (!(fx = need_fx(argv[fx_arg])))
         return;
-    if (patch_index_of(&p, fx) >= 0) {
-        cli_printf("%s is already in the chain (the router has one of each); use set\n", fx->name);
+    /* Before the knobs, so a duplicate is reported as such whatever its knobs say. */
+    if (refused(chain_can_add(fx), fx))
         return;
-    }
-    if (p.n >= FX_MAX_STAGES) {
-        cli_printf("the chain is full (%u stages)\n", FX_MAX_STAGES);
-        return;
-    }
     patch_stage_defaults(&s, fx);
     if (set_knobs(&s, argc - fx_arg - 1, argv + fx_arg + 1))
         return;
-    memmove(&p.stage[pos + 1], &p.stage[pos], (p.n - pos) * sizeof p.stage[0]);
-    p.stage[pos] = s;
-    p.n++;
-    apply(&p);
+    report(chain_insert(pos, &s));
 }
 
 static void cmd_set(int argc, char **argv)
 {
-    patch_t p = *patch_current();
+    const patch_t *p = patch_current();
+    patch_stage_t s;
     int i;
     if (argc < 3) {
         cli_printf("usage: set <pos|fx> knob=value ...\n");
         return;
     }
-    if ((i = stage_ref(&p, argv[1])) < 0) {
+    if ((i = stage_ref(p, argv[1])) < 0) {
         cli_printf("'%s' is not in the chain\n", argv[1]);
         return;
     }
-    if (set_knobs(&p.stage[i], argc - 2, argv + 2))
+    s = p->stage[i];
+    if (set_knobs(&s, argc - 2, argv + 2))
         return;
-    apply(&p);
+    report(chain_set_knobs((unsigned)i, s.knobs));
 }
 
 static void cmd_rm(int argc, char **argv)
 {
-    patch_t p = *patch_current();
     int i;
-    if (argc != 2 || (i = stage_ref(&p, argv[1])) < 0) {
+    if (argc != 2 || (i = stage_ref(patch_current(), argv[1])) < 0) {
         cli_printf("usage: rm <pos|fx>, with a stage that is in the chain\n");
         return;
     }
-    memmove(&p.stage[i], &p.stage[i + 1], (p.n - (unsigned)i - 1) * sizeof p.stage[0]);
-    p.n--;
-    apply(&p);
+    report(chain_remove((unsigned)i));
 }
 
 static void cmd_mv(int argc, char **argv)
 {
-    patch_t p = *patch_current();
-    patch_stage_t s;
+    const patch_t *p = patch_current();
     int from;
     long to;
-    if (argc != 3 || (from = stage_ref(&p, argv[1])) < 0) {
+    if (argc != 3 || (from = stage_ref(p, argv[1])) < 0) {
         cli_printf("usage: mv <from pos|fx> <to pos>\n");
         return;
     }
-    to = parse_pos(argv[2], 1, (long)p.n);
+    to = parse_pos(argv[2], 1, (long)p->n);
     if (to < 0) {
-        cli_printf("position must be 1..%u\n", p.n);
+        cli_printf("position must be 1..%u\n", p->n);
         return;
     }
-    s = p.stage[from];
-    memmove(&p.stage[from], &p.stage[from + 1], (p.n - (unsigned)from - 1) * sizeof s);
-    memmove(&p.stage[to], &p.stage[to - 1], (p.n - (unsigned)to) * sizeof s);
-    p.stage[to - 1] = s;
-    apply(&p);
+    report(chain_move((unsigned)from, (unsigned)to - 1));
 }
 
-static void cmd_clear(void)
+static void cmd_bypass(int argc, char **argv)
 {
-    patch_t p;
-    memset(&p, 0, sizeof p);
-    apply(&p);
+    const patch_t *p = patch_current();
+    int i, on;
+    if (argc < 2 || argc > 3 || (i = stage_ref(p, argv[1])) < 0) {
+        cli_printf("usage: bypass <pos|fx> [on|off], with a stage that is in the chain\n");
+        return;
+    }
+    if (argc == 2)
+        on = !p->stage[i].bypass;
+    else if (!strcmp(argv[2], "on") || !strcmp(argv[2], "off"))
+        on = !strcmp(argv[2], "on");
+    else {
+        cli_printf("usage: bypass <pos|fx> [on|off]: on takes it out of the signal path\n");
+        return;
+    }
+    report(chain_set_bypass((unsigned)i, on));
 }
 
 static void cmd_preset(int argc, char **argv)
 {
-    patch_t p;
     if (argc < 2) {
         for (unsigned i = 0; i < fx_n_presets; ++i)
             cli_printf("  %-14s %s%s\n", fx_presets[i].name, fx_presets[i].description,
@@ -332,19 +383,20 @@ static void cmd_preset(int argc, char **argv)
     }
     for (unsigned i = 0; i < fx_n_presets; ++i) {
         const fx_preset_t *pr = &fx_presets[i];
+        chain_result_t r;
         if (strcmp(pr->name, argv[1]) != 0)
             continue;
-        memset(&p, 0, sizeof p);
-        for (unsigned s = 0; s < pr->n_stages; ++s) {
-            p.stage[s].fx = fx_by_id(pr->stages[s].id);
-            if (!p.stage[s].fx) {               /* tables out of step: never apply half a preset */
-                cli_printf("preset '%s' uses unknown effect id %u\n", pr->name, (unsigned)pr->stages[s].id);
-                return;
-            }
-            memcpy(p.stage[s].knobs, pr->stages[s].knobs, sizeof p.stage[s].knobs);
+        r = chain_load_preset(i);
+        if (r == CHAIN_E_UNKNOWN_FX) {
+            for (unsigned s = 0; s < pr->n_stages; ++s)
+                if (!fx_by_id(pr->stages[s].id)) {
+                    cli_printf("preset '%s' uses unknown effect id %u\n", pr->name,
+                               (unsigned)pr->stages[s].id);
+                    break;
+                }
+            return;
         }
-        p.n = pr->n_stages;
-        apply(&p);
+        report(r);
         return;
     }
     cli_printf("no preset '%s'; try: preset\n", argv[1]);
@@ -368,14 +420,14 @@ static void cmd_gain(int argc, char **argv, int headphone)
 {
     char *end;
     double db;
-    int rc;
+    chain_result_t r;
     if (argc != 2 || (db = strtod(argv[1], &end), *end != '\0') || !(db >= -100.0 && db <= 100.0)) {
         cli_printf(headphone ? "usage: vol <dB>, -73..+6\n" : "usage: gain <dB>, -34.5..+33\n");
         return;
     }
-    rc = headphone ? codec_set_headphone_db((int)(db < 0 ? db - 0.5 : db + 0.5))
-                   : codec_set_line_in_db((int)(db * 10 + (db < 0 ? -0.5 : 0.5)));
-    if (rc)
+    r = headphone ? chain_set_vol((int)(db < 0 ? db - 0.5 : db + 0.5))
+                  : chain_set_gain((int)(db * 10 + (db < 0 ? -0.5 : 0.5)));
+    if (r != CHAIN_OK)
         cli_printf("the codec did not accept that (range, or no I2C answer)\n");
 }
 
@@ -410,8 +462,10 @@ void cli_exec(char *line)
         cmd_rm(argc, argv);
     else if (!strcmp(argv[0], "mv"))
         cmd_mv(argc, argv);
+    else if (!strcmp(argv[0], "bypass"))
+        cmd_bypass(argc, argv);
     else if (!strcmp(argv[0], "clear"))
-        cmd_clear();
+        report(chain_clear());
     else if (!strcmp(argv[0], "preset"))
         cmd_preset(argc, argv);
     else if (!strcmp(argv[0], "status"))

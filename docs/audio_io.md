@@ -13,7 +13,7 @@ configures the codec over I2C once at boot.
 | `rtl/bclk_div.sv` | BCLK from MCLK, and one-clock strobes before each BCLK edge |
 | `rtl/i2s_rx.sv` | ADC data in: one 24-bit sample per frame, plus a valid strobe |
 | `rtl/i2s_tx.sv` | DAC data out: the same sample on both channels |
-| `sw/fx_cli/codec.c` | SSM2603 register setup and the `gain` / `vol` commands |
+| `sw/fx_cli/codec.c` | SSM2603 register setup and level control, for the `gain` / `vol` commands and the panel's MASTER knobs |
 | `constraints/zybo_z7_10.xdc` | codec pins |
 
 ## Clocks and frame
@@ -124,6 +124,10 @@ hanging.
 |---|---|---|---|
 | `gain <dB>` | R0 and R1 `LINVOL` | −34.5 .. +33 dB | 1.5 dB (0x00 .. 0x2D, 0x17 = 0 dB) |
 | `vol <dB>` | R2 and R3 `HPVOL` | −73 .. +6 dB | 1 dB (0x30 .. 0x7F, 0x79 = 0 dB) |
+
+On the front panel, knobs 1 and 2 of the MASTER row do the same, one step per click
+([front_panel.md](front_panel.md)). Both go through `chain_set_gain` / `chain_set_vol`
+(`sw/fx_cli/chain.c`), which also remember the levels for the screen.
 
 `vol` also sets the zero-cross bit (bit 7, `ZCEN`), so the new level takes effect when
 the waveform crosses zero, without a click. The line input has no such bit, so a large

@@ -2,6 +2,8 @@
  *
  * Patch memory is a plain array. fx_router_poll() plays the router: it copies
  * the bank from CTRL to STATUS and bumps the heartbeat, as if a sample ran.
+ * Time is simulated: it moves only with fx_delay_us() and host_wait_ms().
+ * Input lines starting with '@' are front panel events (host_panel.c).
  *
  * Environment:
  *   FX_BRAM_INIT=path   initial contents, "<word> <value>" in hex per line
@@ -13,8 +15,10 @@
 #include <stdlib.h>
 
 #include "fx_platform.h"
+#include "host_panel.h"
 
 static uint32_t g_mem[256];
+static unsigned long long g_us;
 
 static void dump(void)
 {
@@ -46,10 +50,25 @@ volatile uint32_t *fx_bram(void)
     return g_mem;
 }
 
-int fx_getchar(void)
+int fx_trygetchar(void)
 {
-    int c = getchar();
-    return c == EOF ? -1 : c;
+    static int line_start = 1;
+    char line[600];
+    int c;
+
+    if (host_panel_step())
+        return FX_NO_CHAR;
+    c = getchar();
+    if (c == EOF)
+        return FX_EOF;
+    if (line_start && c == '@') {
+        if (!fgets(line, sizeof line, stdin))
+            line[0] = '\0';
+        host_panel_line(line);
+        return FX_NO_CHAR;
+    }
+    line_start = c == '\n' || c == '\r';
+    return c;
 }
 
 void fx_putchar(char c)
@@ -59,8 +78,19 @@ void fx_putchar(char c)
 
 void fx_delay_us(unsigned us)
 {
-    (void)us;
+    g_us += us;
     fx_router_poll();
+}
+
+void host_wait_ms(unsigned ms)
+{
+    g_us += ms * 1000ull;
+    fx_router_poll();
+}
+
+uint32_t fx_millis(void)
+{
+    return (uint32_t)(g_us / 1000u);
 }
 
 void fx_router_poll(void)

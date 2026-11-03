@@ -1,11 +1,15 @@
 /* board.c - fx_platform.h on the Zybo Z7: PS UART1, the router's BRAM, and timing.
- * The codec is in codec.c.
+ * The codec is in codec.c, the front panel in panel_zynq.c.
  */
 
 #include "fx_platform.h"
+#include "board.h"
 
 #include "sleep.h"
+#include "xil_exception.h"
 #include "xparameters.h"
+#include "xpseudo_asm.h"
+#include "xtime_l.h"
 #include "xuartps_hw.h"
 
 /* The AXI BRAM Controller in front of the router's patch memory. Its macro
@@ -29,14 +33,42 @@
 #define STDOUT_BASEADDRESS 0xE0001000u
 #endif
 
+/* Received characters wait here; the hardware FIFO holds only 64. */
+#define RX_RING 256u                    /* a power of two */
+
+static volatile uint8_t  g_rx[RX_RING];
+static volatile unsigned g_rx_head, g_rx_tail;
+
 volatile uint32_t *fx_bram(void)
 {
     return (volatile uint32_t *)FX_BRAM_BASE;
 }
 
-int fx_getchar(void)
+/* From the timer interrupt, or with interrupts masked. */
+void board_uart_drain(void)
 {
-    return XUartPs_RecvByte(STDIN_BASEADDRESS);
+    while (XUartPs_IsReceiveData(STDIN_BASEADDRESS)) {
+        uint8_t c = (uint8_t)XUartPs_ReadReg(STDIN_BASEADDRESS, XUARTPS_FIFO_OFFSET);
+        unsigned next = (g_rx_head + 1u) & (RX_RING - 1u);
+        if (next != g_rx_tail) {        /* full: drop it, as the FIFO would */
+            g_rx[g_rx_head] = c;
+            g_rx_head = next;
+        }
+    }
+}
+
+int fx_trygetchar(void)
+{
+    u32 cpsr = mfcpsr();
+    int c = FX_NO_CHAR;
+    Xil_ExceptionDisableMask(XIL_EXCEPTION_IRQ);    /* the timer interrupt drains too */
+    board_uart_drain();
+    if (g_rx_tail != g_rx_head) {
+        c = g_rx[g_rx_tail];
+        g_rx_tail = (g_rx_tail + 1u) & (RX_RING - 1u);
+    }
+    mtcpsr(cpsr);
+    return c;
 }
 
 void fx_putchar(char c)
@@ -49,6 +81,13 @@ void fx_putchar(char c)
 void fx_delay_us(unsigned us)
 {
     usleep(us);
+}
+
+uint32_t fx_millis(void)
+{
+    XTime t;
+    XTime_GetTime(&t);
+    return (uint32_t)(t / (COUNTS_PER_SECOND / 1000u));
 }
 
 void fx_router_poll(void)

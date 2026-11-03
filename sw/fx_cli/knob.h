@@ -27,6 +27,14 @@ double knob_natural(const fx_knob_t *k, uint16_t bits);
 /* The natural value as text, e.g. "0.350", "14400", "0.55" (no float printf needed). */
 void knob_format(const fx_knob_t *k, uint16_t bits, char *buf, size_t len);
 
+/* The same, but the raw value when that text would not parse back to exactly
+ * `bits`: for commands that must replay exactly (the panel's echo). */
+void knob_format_exact(const fx_knob_t *k, uint16_t bits, char *buf, size_t len);
+
+/* A natural value to the nearest raw value, rounded as knob_parse does and
+ * clamped to the knob's range (for knob turns, which can't be "out of range"). */
+uint16_t knob_from_natural(const fx_knob_t *k, double v);
+
 /* A double with `decimals` places. */
 void fmt_fixed(char *buf, size_t len, double v, int decimals);
 

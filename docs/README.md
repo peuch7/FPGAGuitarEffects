@@ -11,7 +11,8 @@ explain how each part works, so you can change it safely.
 | [router.md](router.md) | understand or change the effect router: its state machine, patch memory, bank switching, flags |
 | [effects.md](effects.md) | know what each effect does, its knobs, latency and memory, and its known limits |
 | [audio_io.md](audio_io.md) | understand the I2S interface to the SSM2603 codec, its timing, and the codec setup |
-| [firmware.md](firmware.md) | understand or extend the ARM command line (`sw/fx_cli`) |
+| [firmware.md](firmware.md) | understand or extend the ARM firmware (`sw/fx_cli`): the command line, and the operations it shares with the front panel |
+| [front_panel.md](front_panel.md) | wire up and use the TFT and encoders, or change the screens |
 | [fx_tool.md](fx_tool.md) | look up `scripts/fx.py`: commands, spec and preset formats, what it generates and checks |
 | [adding_an_effect.md](adding_an_effect.md) | add a new effect, or change one, step by step |
 | [build_flow.md](build_flow.md) | understand or change the Vivado and Vitis scripts, the block design, the boot image |

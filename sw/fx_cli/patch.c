@@ -98,6 +98,7 @@ unsigned patch_unknown_ids(void)
 patch_result_t patch_apply(const patch_t *p)
 {
     unsigned bank = router_active_bank(g_base);
+    unsigned slot = 0;
     int ok;
 
     /* The last switch must have landed before its old bank is reused. */
@@ -105,8 +106,9 @@ patch_result_t patch_apply(const patch_t *p)
 
     bank ^= 1u;
     for (unsigned i = 0; i < p->n; ++i)
-        router_write_slot(g_base, bank, i, p->stage[i].fx->id, p->stage[i].knobs);
-    router_write_end(g_base, bank, p->n);
+        if (!p->stage[i].bypass)
+            router_write_slot(g_base, bank, slot++, p->stage[i].fx->id, p->stage[i].knobs);
+    router_write_end(g_base, bank, slot);
     /* The whole bank must land before CTRL points the router at it. The PL
      * region is strongly ordered on the Zynq, so this is belt and braces. */
     __sync_synchronize();
