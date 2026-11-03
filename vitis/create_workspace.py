@@ -89,11 +89,18 @@ def main() -> int:
         app.set_app_config(key="USER_COMPILE_SOURCES", values=[s.name for s in SOURCES])
     app.set_app_config(key="USER_LINK_LIBRARIES", values=["m"])
 
-    app.build()
+    # app.build() doesn't raise when the compiler fails, and would leave the last
+    # good ELF in place: the ELF's existence afterwards is the test.
     elf = WORKSPACE / APP / "build" / f"{APP}.elf"
-    print(f"fx: built {elf if elf.exists() else APP}")
-    print("fx: next: Run fx_cli from the Vitis GUI (open build/vitis), or: xsdb vitis/run.tcl")
+    elf.unlink(missing_ok=True)
+    app.build()
     vitis.dispose()
+    if not elf.exists():
+        print(f"fx: {APP} did NOT build; the compiler's errors are above "
+              f"(and in {elf.parent / 'build.log'})")
+        return 1
+    print(f"fx: built {elf}")
+    print("fx: next: Run fx_cli from the Vitis GUI (open build/vitis), or: xsdb vitis/run.tcl")
     return 0
 
 

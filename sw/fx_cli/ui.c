@@ -147,6 +147,16 @@ static void message(uint16_t fg, const char *fmt, ...)
     g_msg_until = g_now + MSG_MS;
 }
 
+/* src into dst[size], cut short if it doesn't fit (a box shows 9 characters) */
+static void copy_text(char *dst, size_t size, const char *src)
+{
+    size_t n = strlen(src);
+    if (n >= size)
+        n = size - 1;
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
 /* text padded with spaces to exactly n characters, so it covers what was there */
 static void pad(char *out, const char *text, int n)
 {
@@ -775,14 +785,15 @@ static void knob_label(const char *name, box_t *b)
                 break;
             }
     }
-    snprintf(b->name[0], sizeof b->name[0], "%.*s", cut, t);
-    snprintf(b->name[1], sizeof b->name[1], "%s", t[cut] == ' ' ? t + cut + 1 : t + cut);
+    copy_text(b->name[1], sizeof b->name[1], t[cut] == ' ' ? t + cut + 1 : t + cut);
+    t[cut] = '\0';
+    copy_text(b->name[0], sizeof b->name[0], t);
 }
 
 static void build_boxes(void)
 {
     int tgt = knob_target();
-    char v[24];
+    char v[24], sv[26];
     for (int k = 0; k < 4; ++k) {
         g_want.box[k].bar = -1;
         g_want.box[k].lit = (uint8_t)time_left(g_lit_until[k]);
@@ -792,7 +803,8 @@ static void build_boxes(void)
         snprintf(b->name[0], sizeof b->name[0], "IN");
         snprintf(b->name[1], sizeof b->name[1], "GAIN");
         fmt_fixed(v, sizeof v, chain_gain() / 10.0, 1);
-        snprintf(b->value, sizeof b->value, "%s%s", chain_gain() > 0 ? "+" : "", v);
+        snprintf(sv, sizeof sv, "%s%s", chain_gain() > 0 ? "+" : "", v);
+        copy_text(b->value, sizeof b->value, sv);
         snprintf(b->unit, sizeof b->unit, "DB");
         b->bar = (int16_t)((chain_gain() + 345) * BAR_W / 675);
         b = &g_want.box[1];
@@ -815,8 +827,8 @@ static void build_boxes(void)
             bits = s->knobs[kn->slot];
             knob_label(kn->name, b);
             knob_format(kn, bits, v, sizeof v);
-            snprintf(b->value, sizeof b->value, "%s", v);
-            snprintf(b->unit, sizeof b->unit, "%s", kn->unit);
+            copy_text(b->value, sizeof b->value, v);
+            copy_text(b->unit, sizeof b->unit, kn->unit);
             b->bar = kn->max > kn->min
                          ? (int16_t)((long)(bits - kn->min) * BAR_W / (kn->max - kn->min)) : 0;
         }

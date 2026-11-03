@@ -1,5 +1,5 @@
-/* board.c - fx_platform.h on the Zybo Z7: PS UART1, the router's BRAM, and timing.
- * The codec is in codec.c, the front panel in panel_zynq.c.
+/* board.c - fx_platform.h on the Zybo Z7: PS UART1, the router's BRAM, and delays.
+ * The codec is in codec.c; the front panel and fx_millis() in panel_zynq.c.
  */
 
 #include "fx_platform.h"
@@ -9,7 +9,6 @@
 #include "xil_exception.h"
 #include "xparameters.h"
 #include "xpseudo_asm.h"
-#include "xtime_l.h"
 #include "xuartps_hw.h"
 
 /* The AXI BRAM Controller in front of the router's patch memory. Its macro
@@ -83,12 +82,7 @@ void fx_delay_us(unsigned us)
     usleep(us);
 }
 
-uint32_t fx_millis(void)
-{
-    XTime t;
-    XTime_GetTime(&t);
-    return (uint32_t)(t / (COUNTS_PER_SECOND / 1000u));
-}
+/* fx_millis() is in panel_zynq.c: its timer interrupt keeps the count. */
 
 void fx_router_poll(void)
 {

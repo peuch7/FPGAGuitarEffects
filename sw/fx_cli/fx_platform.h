@@ -20,7 +20,7 @@ volatile uint32_t *fx_bram(void);
 int  fx_trygetchar(void);       /* never waits: a character, FX_NO_CHAR, or FX_EOF (host only) */
 void fx_putchar(char c);        /* '\n' becomes "\r\n" on the serial port */
 void fx_delay_us(unsigned us);
-uint32_t fx_millis(void);       /* milliseconds since some start; wraps */
+uint32_t fx_millis(void);       /* milliseconds since some start; wraps (board: panel_zynq.c) */
 
 /* Called while waiting for the router; the host uses it to play the router's part. */
 void fx_router_poll(void);

@@ -221,7 +221,7 @@ panel between keystrokes.
 | UART receive | the RX FIFO is drained into a 256-byte ring by the panel's 2 kHz timer interrupt and by `fx_trygetchar()` itself (with interrupts masked), so it works with or without the panel |
 | UART send | `XUartPs_SendByte` on `STDOUT_BASEADDRESS` (fallback `0xE0001000`, PS UART1), polled |
 | delays | `usleep()` from the BSP |
-| `fx_millis()` | the global timer (`XTime_GetTime`), which `usleep()` also uses |
+| `fx_millis()` | counted by the panel's 2 kHz timer interrupt (`panel_zynq.c`); the SDT BSP has no `xtime_l.h`, and the timer's reload value comes from the CPU clock in `xparameters.h` |
 | front panel | `panel_zynq.c`: SPI1 (`XSpiPs`), PS GPIO (`XGpioPs`) for DC, RST and the EMIO encoders, the private timer (`XScuTimer`) and its interrupt; `__has_include` turns it into stubs when the BSP lacks those drivers |
 | I2C | `XIicPs_LookupConfig(XPAR_XIICPS_0_BASEADDR)` in SDT builds (Vitis 2023.2+), `..._DEVICE_ID` otherwise |
 

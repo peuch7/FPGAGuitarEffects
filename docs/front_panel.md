@@ -211,8 +211,8 @@ The timing of clicks and holds, steps and the echo delay are `#define`s at the t
   panel pass, forever ([firmware.md](firmware.md#main-loop)). Neither waits for the
   other.
 - **A 2 kHz timer interrupt** decodes the encoders (a state-table quadrature decoder
-  that ignores bounces; debounced switches) and empties the UART's receive FIFO into a
-  ring buffer. Turns and keystrokes are never lost while the main loop is drawing.
+  that ignores bounces; debounced switches), empties the UART's receive FIFO into a
+  ring buffer, and counts the milliseconds the UI times clicks and holds with. Turns and keystrokes are never lost while the main loop is drawing.
 - **Each panel pass** turns the gestures since the last pass into `chain_*()` calls,
   builds the whole screen as text, and redraws **one** widget that differs from what
   is on the glass (a row, a box, the status bar). One widget takes a few ms over SPI,

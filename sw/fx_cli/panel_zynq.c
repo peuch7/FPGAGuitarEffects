@@ -2,8 +2,9 @@
  *
  *   display    PS SPI1 on MIO 10..15 (Pmod JF), DC on MIO0, RST on MIO9
  *   encoders   EMIO GPIO 0..14 (bank 2), from Pmods JC, JD, JE
- *   timer      the A9's private timer at PANEL_POLL_HZ: decodes the encoders
- *              and empties the UART's receive FIFO into board.c's ring
+ *   timer      the A9's private timer at PANEL_POLL_HZ: decodes the encoders,
+ *              empties the UART's receive FIFO into board.c's ring, and counts
+ *              the milliseconds of fx_millis()
  *
  * From the zybo-encoders-tft sample (lcd_hw_zynq.c, encoders.c, main.c).
  * Builds in both Vitis flows: classic (DEVICE_ID lookups) and SDT (base
@@ -28,7 +29,6 @@
 #include "xgpiops.h"
 #include "xscutimer.h"
 #include "xspips.h"
-#include "xtime_l.h"
 #ifdef SDT
 #include "xinterrupt_wrap.h"
 #else
@@ -37,6 +37,35 @@
 #else
 #define PANEL_HW 0
 #endif
+
+/* The private timer counts at half the CPU clock. The macro's name depends on the
+ * flow; SDT BSPs (Vitis 2023.2+) have no xtime_l.h and its COUNTS_PER_SECOND. */
+#if defined(XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ)
+#define CPU_HZ XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ
+#elif defined(XPAR_CPU_CORE_CLOCK_FREQ_HZ)
+#define CPU_HZ XPAR_CPU_CORE_CLOCK_FREQ_HZ
+#elif defined(XPAR_PS7_CORTEXA9_0_CPU_CLK_FREQ_HZ)
+#define CPU_HZ XPAR_PS7_CORTEXA9_0_CPU_CLK_FREQ_HZ
+#else
+#define CPU_HZ 666666687u          /* the Zybo Z7 board preset's CPU clock */
+#endif
+
+/* The private timer's address in SDT builds: the canonical name, the sample's
+ * name, or the Zynq-7000's fixed address. */
+#if defined(XPAR_XSCUTIMER_0_BASEADDR)
+#define SCUTIMER_BASE XPAR_XSCUTIMER_0_BASEADDR
+#elif defined(XPAR_SCUTIMER_BASEADDR)
+#define SCUTIMER_BASE XPAR_SCUTIMER_BASEADDR
+#else
+#define SCUTIMER_BASE 0xF8F00600u
+#endif
+
+static volatile uint32_t g_ticks;  /* timer interrupts since panel_init() */
+
+uint32_t fx_millis(void)
+{
+    return (uint32_t)((uint64_t)g_ticks * 1000u / PANEL_POLL_HZ);
+}
 
 #if PANEL_HW
 
@@ -131,6 +160,7 @@ static void enc_poll(void)
 static void timer_isr(void *ref)
 {
     XScuTimer_ClearInterruptStatus((XScuTimer *)ref);
+    g_ticks++;
     enc_poll();
     board_uart_drain();
 }
@@ -139,7 +169,7 @@ static int timer_init(void)
 {
     XScuTimer_Config *tc;
 #ifdef SDT
-    tc = XScuTimer_LookupConfig(XPAR_SCUTIMER_BASEADDR);
+    tc = XScuTimer_LookupConfig(SCUTIMER_BASE);
 #else
     tc = XScuTimer_LookupConfig(XPAR_XSCUTIMER_0_DEVICE_ID);
 #endif
@@ -161,7 +191,7 @@ static int timer_init(void)
         XScuGic_Enable(&g_gic, XPAR_SCUTIMER_INTR);
     }
 #endif
-    XScuTimer_LoadTimer(&g_timer, COUNTS_PER_SECOND / PANEL_POLL_HZ);
+    XScuTimer_LoadTimer(&g_timer, (u32)(CPU_HZ / 2u / PANEL_POLL_HZ));
     XScuTimer_EnableAutoReload(&g_timer);
     XScuTimer_EnableInterrupt(&g_timer);
     XScuTimer_Start(&g_timer);
