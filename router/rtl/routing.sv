@@ -5,7 +5,7 @@
 // routing.sv — runs one sample through every effect listed in patch memory.
 //
 // Patch memory is a 32-bit BRAM shared with the ARM (patch_ram.sv; map in
-// tools/wavsim/router_patch.py). Each sample:
+// scripts/fxlib/routermap.py). Each sample:
 //
 //   IDLE -> CTRL -> BANK -> STATUS            pick the bank, report to the ARM
 //        -> ID -> DECODE -> PARAM x5 -> LOAD -> DISPATCH -> WAIT   per stage
@@ -14,14 +14,14 @@
 // For each slot the FSM reads the effect id, reads that slot's four param
 // words, hands the running sample to the effect, and waits for its result. An
 // END id (0) finishes the walk and the sample is emitted. The core knows
-// nothing about specific effects; effect_bank.sv owns the instances.
+// nothing about specific effects; gen/rtl/effect_bank.sv owns the instances.
 //
 // The bank is latched from CTRL once per sample and then written to STATUS, so
 // every sample runs entirely on one bank and the ARM can tell when the bank it
 // switched away from is free to rewrite.
 //
 // Timing: about ten clocks of overhead per stage plus that effect's latency.
-// The Zybo gives ~2083 clocks per sample at 100 MHz / 48 kHz.
+// On the Zybo the router runs on the 12.288 MHz codec clock: 256 clocks per sample.
 //
 // A sample that arrives while the walk is still in progress is dropped and
 // `overrun` latches: the patch is too slow for the sample rate. An effect that

@@ -48,8 +48,5 @@
       "factor": 0.1,
       "doc": "Centre delay. Stored in 0.1 ms steps; capped at 30 ms, beyond which it stops being a chorus and the buffer grows."
     }
-  ],
-  "cycles_per_sample": 32,
-  "flush_samples": 16,
-  "reference_model": "wavsim.refmodels.chorus:process"
+  ]
 }

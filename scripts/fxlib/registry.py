@@ -4,9 +4,6 @@ Ids are what the ARM writes into patch memory, so they are append-only. A
 removed effect's id is retired, not reused: a preset or a patch saved with the
 old id must never silently select a different effect. Re-adding the same effect
 gets its old id back.
-
-When effects come from VerilogSim, their ids are adopted from its router_map.h
-so a patch means the same thing in the simulator and on the board.
 """
 
 from __future__ import annotations
@@ -18,7 +15,7 @@ from typing import Dict, List, Optional
 
 from . import routermap as rm
 
-COMMENT = ("Written by scripts/fx.py; edit with fx.py add/sync/remove. "
+COMMENT = ("Written by scripts/fx.py; edit with fx.py add/remove/power-on. "
            "Ids are append-only: a retired id is never given to another effect.")
 
 
@@ -91,18 +88,11 @@ class Registry:
 
     # -- changes -----------------------------------------------------------
 
-    def assign(self, name: str, wanted: Optional[int] = None) -> int:
-        """Register `name` (idempotent). `wanted` pins the id, e.g. VerilogSim's."""
-        current = self.effects.get(name, self.retired.get(name))
-        if wanted is not None:
-            if current is not None and current != wanted:
-                raise RegistryError(
-                    f"{name} has id {current} here but {wanted} upstream; "
-                    f"ids are append-only, so reconcile them by hand in {self.path}")
-            holder = self.owner_of(wanted)
-            if holder not in (None, name):
-                raise RegistryError(f"{name} wants id {wanted}, which belongs to {holder}")
-        fx_id = current if current is not None else (wanted if wanted is not None else self.next_id())
+    def assign(self, name: str) -> int:
+        """Register `name` (idempotent): its old id if it ever had one, else the next."""
+        fx_id = self.effects.get(name, self.retired.get(name))
+        if fx_id is None:
+            fx_id = self.next_id()
         self.retired.pop(name, None)
         self.effects[name] = fx_id
         return fx_id

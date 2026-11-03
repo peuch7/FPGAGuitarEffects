@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import datetime
 import json
 import re
 import shutil
-import subprocess
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from . import render_c, render_lists, render_rtl
 from . import routermap as rm
@@ -18,14 +16,6 @@ from .registry import Registry, RegistryError
 from .spec import (CONTRACT_PORTS, CORE_PORTS, HEADER_EXTS, N_PARAMS, PARAM_WIDTH,
                    PROVIDED_HEADERS, Param, Spec, SpecError)
 
-# Router core files, as they sit in VerilogSim; router_top.sv is its simulation
-# stand-in for the ARM and does not go into the bitstream.
-ROUTER_CORE = {
-    "rtl/router/routing.sv": "routing.sv",
-    "rtl/router/patch_ram.sv": "patch_ram.sv",
-    "rtl/router/router_pl.sv": "router_pl.sv",
-    "rtl/common/effect_contract.svh": "effect_contract.svh",
-}
 CONTRACT_DIRECTIONS = {"clk": "input", "rst_n": "input", "sample_in": "input",
                        "sample_in_valid": "input", "params": "input",
                        "sample_out": "output", "sample_out_valid": "output"}
@@ -36,30 +26,6 @@ class FxError(Exception):
 
 
 PresetStages = List[Tuple[str, rm.Stage]]   # [(effect name, (id, bits)), ...]
-
-
-def _git(repo: Path, *args: str) -> str:
-    try:
-        out = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True)
-        return out.stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return ""
-
-
-def provenance(repo: Path, paths: Iterable[str]) -> str:
-    """Commit and state of `paths` in the git repo at `repo`, for SOURCE.txt."""
-    paths = list(paths)
-    commit = _git(repo, "rev-parse", "HEAD") or "(not a git repo)"
-    status = _git(repo, "status", "--porcelain", "--untracked-files=all", "--", *paths)
-    lines = [f"origin: {repo}", f"commit: {commit}"]
-    if status:
-        lines.append("state: NOT CLEAN - these files differ from that commit:")
-        lines += [f"    {line}" for line in status.splitlines()]
-    else:
-        lines.append("state: clean")
-    lines.append(f"synced: {datetime.datetime.now().isoformat(timespec='seconds')}")
-    lines += ["files:"] + [f"    {p}" for p in paths]
-    return "\n".join(lines) + "\n"
 
 
 class Project:
@@ -279,7 +245,7 @@ class Project:
         files[L.gen_sim / "sources.f"] = render_lists.sources_f(rtl, include_dirs)
 
         if L.readme.exists():
-            notes = {spec.name: spec.extra["status"] for spec, _ in effects if spec.extra.get("status")}
+            notes = {spec.name: spec.status for spec, _ in effects if spec.status}
             table = render_lists.readme_table(effects, notes)
             files[L.readme] = render_lists.splice_readme(L.readme.read_text(), table)
         return files
@@ -336,8 +302,12 @@ class Project:
                           f"into one folder, so names must be unique")
         return files
 
-    def import_effect(self, spec: Spec, origin: str, wanted_id: Optional[int] = None) -> int:
-        """Copy an effect into effects/<name>/, register it, and write its spec."""
+    def import_effect(self, spec: Spec) -> int:
+        """Copy an effect's files into effects/<name>/, register it, and write its spec.
+
+        Idempotent: running it again on effects/<name>/effect.json picks up
+        edited sources and newly included headers, and keeps the effect's id.
+        """
         try:
             self.warnings = spec.validate()
         except SpecError as exc:
@@ -346,11 +316,6 @@ class Project:
 
         dest = self.layout.effect_dir(spec.name)
         rtl_dir = dest / "rtl"
-        local: dict = {}
-        if self.layout.spec_path(spec.name).exists():
-            # Keep keys only this repo knows about (e.g. "status") across a re-sync.
-            old = Spec.load(self.layout.spec_path(spec.name))
-            local = {k: v for k, v in old.extra.items() if k not in spec.extra}
         # Read first: re-adding an effect from its own folder copies onto itself.
         contents = {path.name: path.read_bytes() for path in files}
         if rtl_dir.exists():
@@ -362,7 +327,7 @@ class Project:
         normalized = Spec(
             name=spec.name, sources=[f"rtl/{p.name}" for p in files], params=spec.params,
             top=spec.top, module=spec.module, ports=spec.ports, description=spec.description,
-            owner=spec.owner, extra={**spec.extra, **local},
+            owner=spec.owner, status=spec.status,
             path=self.layout.spec_path(spec.name), root=dest)
         if normalized.generates_wrapper:
             # Fail now, before anything is registered, if the RTL does not match.
@@ -370,10 +335,9 @@ class Project:
         else:
             self._check_contract_top(normalized, self._find_module(normalized, normalized.top))
         normalized.path.write_text(json.dumps(normalized.to_json(), indent=2) + "\n")
-        (dest / "SOURCE.txt").write_text(origin)
 
         try:
-            fx_id = self.registry.assign(spec.name, wanted_id)
+            fx_id = self.registry.assign(spec.name)
         except RegistryError as exc:
             raise FxError(str(exc)) from None
         self.registry.save()
@@ -391,66 +355,13 @@ class Project:
             if any(s.get("effect") == name for s in stages):
                 users.append(self.layout.rel(path))
         if users:
-            self.registry.assign(name, fx_id)   # put it back: nothing changed
+            self.registry.assign(name)   # put it back (same id): nothing changed
             raise FxError(f"{name} is used by {users}; edit those presets first "
                           f"(effects left: {', '.join(sorted(specs_left)) or 'none'})")
         self.registry.save()
         if delete:
             shutil.rmtree(self.layout.effect_dir(name), ignore_errors=True)
         return fx_id
-
-    # -- VerilogSim --------------------------------------------------------
-
-    def sync_router(self, sim: Path) -> str:
-        upstream_svh = sim / "rtl" / "router" / "router_patch.svh"
-        if not upstream_svh.exists():
-            raise FxError(f"{upstream_svh} not found: is {sim} a VerilogSim checkout with the router?")
-        upstream = rm.parse_svh_map(upstream_svh.read_text())
-        drift = {k: (upstream.get(k), v) for k, v in rm.SVH_MAP.items() if upstream.get(k) != v}
-        if drift:
-            raise FxError("VerilogSim's router memory map differs from scripts/fxlib/routermap.py "
-                          f"(upstream, ours): {drift}. Update routermap.py to match, then sync again.")
-        self.layout.router_rtl.mkdir(parents=True, exist_ok=True)
-        for src, dst in ROUTER_CORE.items():
-            shutil.copyfile(sim / src, self.layout.router_rtl / dst)
-        text = provenance(sim, ROUTER_CORE)
-        (self.layout.router_rtl.parent / "SOURCE.txt").write_text(text)
-        return text
-
-    def sync_effects(self, sim: Path, names: Optional[Sequence[str]] = None) -> List[Tuple[str, int, str]]:
-        upstream_ids: Dict[str, int] = {}
-        c_header = sim / "sw" / "router_map.h"
-        if c_header.exists():
-            upstream_ids = rm.parse_c_ids(c_header.read_text())
-        if names is None:
-            if not upstream_ids:
-                raise FxError(f"{c_header} not found; name the effects to sync with --effects")
-            names = sorted(upstream_ids, key=upstream_ids.get)
-        done = []
-        for name in names:
-            manifest = sim / "configs" / "effects" / f"{name}.json"
-            if not manifest.exists():
-                raise FxError(f"VerilogSim has no manifest {manifest}")
-            try:
-                spec = Spec.load(manifest, root=sim)
-            except SpecError as exc:
-                raise FxError(str(exc)) from None
-            files = [Path(s).as_posix() for s in spec.sources] + [f"configs/effects/{name}.json"]
-            fx_id = self.import_effect(spec, provenance(sim, files), upstream_ids.get(name))
-            done.append((name, fx_id, "" if name in upstream_ids else "not in VerilogSim's router; new id"))
-        return done
-
-    def sync_presets(self, sim: Path) -> List[str]:
-        """Copy VerilogSim's chain configs whose effects are all in the build."""
-        active = set(self.registry.effects)
-        copied = []
-        self.layout.presets.mkdir(parents=True, exist_ok=True)
-        for path in sorted((sim / "configs" / "chains").glob("*.json")):
-            stages = json.loads(path.read_text()).get("stages", [])
-            if all(s.get("effect") in active for s in stages):
-                shutil.copyfile(path, self.layout.presets / path.name)
-                copied.append(path.stem)
-        return copied
 
 
 def derive_spec(rtl: Sequence[Path], module: Optional[str] = None, name: Optional[str] = None) -> Spec:

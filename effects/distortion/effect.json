@@ -31,8 +31,5 @@
       "scale": "q16",
       "doc": "Output attenuation, applied after clipping."
     }
-  ],
-  "cycles_per_sample": 32,
-  "flush_samples": 16,
-  "reference_model": "wavsim.refmodels.distortion:process"
+  ]
 }

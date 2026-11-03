@@ -4,7 +4,7 @@
 Builds sw/fx_cli with sim/host/host_platform.c in place of board.c/codec.c,
 types commands at it, and checks the words left in patch memory against what
 the generator says that chain must look like (fxlib.routermap.bank_writes,
-the same stores as VerilogSim's router_patch.bank_writes). Also checks that the
+the same stores the ARM's router_map.h makes). Also checks that the
 C knob parser agrees with the Python one bit for bit, rounding included.
 
     python3 sim/host/test_cli.py

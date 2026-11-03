@@ -1,8 +1,0 @@
-origin: /Users/pedro/Documents/Capstone/VerilogSim
-commit: 1a1769d95d55f197102c3b6b5178cfb403fff21c
-state: clean
-synced: 2026-11-02T21:48:10
-files:
-    rtl/effects/overdrive/overdrive.sv
-    rtl/effects/overdrive/overdrive_top.sv
-    configs/effects/overdrive.json

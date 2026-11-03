@@ -12,7 +12,7 @@
 // Icarus. Both ports have one clock of read latency, which is what the AXI BRAM
 // Controller expects (READ_LATENCY 1).
 //
-// The map is in tools/wavsim/router_patch.py. The initial contents are the
+// The map is in scripts/fxlib/routermap.py. The initial contents are the
 // power-on patch from router_patch.svh: Vivado puts them in the bitstream, so
 // the board makes sound before any software has run.
 //

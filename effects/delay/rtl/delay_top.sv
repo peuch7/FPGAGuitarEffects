@@ -1,11 +1,11 @@
 `timescale 1ns / 1ps
 `include "effect_contract.svh"
 
-// delay_top — harness wrapper for delay.sv.
+// delay_top — contract wrapper for delay.sv.
 //
 // Nothing here does any DSP. Its only job is to present the standard interface
-// from rtl/common/effect_contract.svh and slice the parameter bus onto the
-// names delay.sv actually uses. The slot numbers match configs/effects/delay.json.
+// from router/rtl/effect_contract.svh and slice the parameter bus onto the
+// names delay.sv actually uses. The slot numbers match effects/delay/effect.json.
 //
 //   slot 0  delay_samples   0..48000 samples of delay
 //   slot 1  feedback        Q16: how much of the delayed signal is fed back

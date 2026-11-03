@@ -54,9 +54,8 @@ const unsigned fx_n_effects = 6;
 const fx_preset_t fx_presets[] = {
     { "ambient", "Chorus into a long, soft delay into a big reverb.", 3, { { 5, { 80, 250, 26214, 80, 0, 0, 0, 0 } }, { 3, { 21600, 29491, 22937, 0, 0, 0, 0, 0 } }, { 6, { 55705, 19660, 26214, 0, 0, 0, 0, 0 } } } },
     { "clean", "No effects: the dry signal, straight through.", 0, { { 0 } } },
-    { "example_mesh", "Overdrive into delay into reverb - one board per stage, in the order a pedalboard would use.", 3, { { 1, { 8, 36044, 45874, 0, 0, 0, 0, 0 } }, { 3, { 14400, 22937, 19660, 0, 0, 0, 0, 0 } }, { 6, { 49151, 26214, 16384, 0, 0, 0, 0, 0 } } } },
-    { "pedalboard", "Overdrive into delay into reverb: example_mesh with drive scaled for the RTL (Q8.8, 2048 = 8x).", 3, { { 1, { 2048, 36044, 45874, 0, 0, 0, 0, 0 } }, { 3, { 14400, 22937, 19660, 0, 0, 0, 0, 0 } }, { 6, { 49151, 26214, 16384, 0, 0, 0, 0, 0 } } } },
+    { "pedalboard", "Overdrive (8x) into delay into reverb.", 3, { { 1, { 2048, 36044, 45874, 0, 0, 0, 0, 0 } }, { 3, { 14400, 22937, 19660, 0, 0, 0, 0, 0 } }, { 6, { 49151, 26214, 16384, 0, 0, 0, 0, 0 } } } },
 };
-const unsigned fx_n_presets = 4;
+const unsigned fx_n_presets = 3;
 
 const char fx_power_on_preset[] = "clean";

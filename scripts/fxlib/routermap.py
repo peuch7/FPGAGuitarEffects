@@ -1,10 +1,9 @@
 """The router's patch memory: layout, and the stores that write a patch into it.
 
-This mirrors VerilogSim's tools/wavsim/router_patch.py, which defines the map
-that the router core (router/rtl/routing.sv) is written against. The core reads
-the map only through the macros in gen/rtl/router_patch.svh, so these numbers
-must agree with upstream; `fx.py sync --router` checks them against
-VerilogSim's own router_patch.svh and refuses to continue if they drifted.
+This is the one description of the map. The router core (router/rtl/routing.sv,
+patch_ram.sv) reads it only through the macros fx.py writes to
+gen/rtl/router_patch.svh, and the ARM only through gen/sw/router_map.h, so
+changing a number here and running `fx.py gen` changes both sides together.
 
 Word map (32-bit words; byte offset = 4 * word from the BRAM's AXI base):
 
@@ -21,7 +20,6 @@ Word map (32-bit words; byte offset = 4 * word from the BRAM's AXI base):
 
 from __future__ import annotations
 
-import re
 from typing import Dict, List, Sequence, Tuple
 
 ID_W = 8
@@ -42,19 +40,6 @@ STATUS_OVERRUN_BIT = 8
 STATUS_TIMEOUT_BIT = 9
 STATUS_HEARTBEAT_SHIFT = 16
 
-# The macros router/rtl/*.sv expect from router_patch.svh, with our values.
-SVH_MAP = {
-    "ROUTER_ID_W": ID_W,
-    "ROUTER_SLOTS": SLOTS,
-    "ROUTER_RAM_AW": RAM_AW,
-    "ROUTER_CTRL_WORD": CTRL_WORD,
-    "ROUTER_STATUS_WORD": STATUS_WORD,
-    "ROUTER_BANK0_WORD": BANK_BASE[0],
-    "ROUTER_BANK1_WORD": BANK_BASE[1],
-    "ROUTER_SLOT_WORDS": SLOT_WORDS,
-    "ROUTER_PARAM_WORDS": PARAM_WORDS,
-}
-
 # A stage as the hardware sees it: effect id and the 8 knob values in bits.
 Stage = Tuple[int, Sequence[int]]
 
@@ -71,8 +56,8 @@ def slot_word_addr(bank: int, slot: int, word: int = 0) -> int:
 def bank_writes(stages: Sequence[Stage], bank: int) -> List[Tuple[int, int]]:
     """(word address, value) stores that put `stages` into `bank`, END included.
 
-    The same stores, in the same order, as VerilogSim's router_patch.bank_writes
-    and the ARM's router_write_slot()/router_write_end().
+    The same stores, in the same order, as the ARM's router_write_slot() and
+    router_write_end() in gen/sw/router_map.h.
     """
     if len(stages) > MAX_STAGES:
         raise ValueError(f"{len(stages)} stages, router holds at most {MAX_STAGES}")
@@ -87,20 +72,3 @@ def bank_writes(stages: Sequence[Stage], bank: int) -> List[Tuple[int, int]]:
 def power_on_image(stages: Sequence[Stage]) -> Dict[int, int]:
     """Non-zero words of the BRAM's initial contents: `stages` in bank 0, active."""
     return {addr: value for addr, value in bank_writes(stages, 0) if value}
-
-
-_DEFINE = re.compile(r"^\s*`define\s+(\w+)\s+(\d+)\s*$", re.M)
-
-
-def parse_svh_map(text: str) -> Dict[str, int]:
-    """The numeric `ROUTER_*` macros of a router_patch.svh."""
-    return {k: int(v) for k, v in _DEFINE.findall(text) if k in SVH_MAP}
-
-
-def parse_c_ids(text: str) -> Dict[str, int]:
-    """Effect ids from a router_map.h: {"delay": 3, ...}, END excluded."""
-    ids = {}
-    for name, value in re.findall(r"#define\s+ROUTER_FX_(\w+)\s+(\d+)u", text):
-        if name != "END":
-            ids[name.lower()] = int(value)
-    return ids

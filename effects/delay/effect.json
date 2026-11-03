@@ -31,8 +31,5 @@
       "scale": "q16",
       "doc": "Dry/wet balance. 0 = dry only, 1.0 = delayed only."
     }
-  ],
-  "cycles_per_sample": 32,
-  "flush_samples": 16,
-  "reference_model": "wavsim.refmodels.delay:process"
+  ]
 }

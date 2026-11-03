@@ -1,6 +1,6 @@
 """Just enough SystemVerilog parsing to check a spec against its RTL.
 
-Handles ANSI-style port lists, which is what every effect in VerilogSim uses:
+Handles ANSI-style port lists, which is what every effect here uses:
 
     module delay #(parameter int N = 4) (
         input  logic signed [23:0] sample_in,

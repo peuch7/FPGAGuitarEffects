@@ -1,16 +1,16 @@
-"""Effect specs: the one file that says what an effect is.
+"""Effect specs: the one file that says what an effect is (effects/<name>/effect.json).
 
-The format is VerilogSim's manifest (configs/effects/<name>.json), so any
-manifest there is already a valid spec. A few optional keys let a spec describe
-RTL that has no contract wrapper of its own; fx.py then generates one:
-
-    "module": "highpass"            core module; the wrapper highpass_top is generated
+    "name", "description", "owner", "status"
+    "sources"                       RTL files, relative to the spec
+    "top": "delay_top"              EITHER a contract wrapper among the sources...
+    "module": "highpass"            ...OR the core module; fx.py generates highpass_top
     "ports":  {"sample_in": "x",    core port names that differ from the contract's
                "rst_n": null}       null: the core has no such port (rst_n only)
-    params[i].port                  core port carrying that knob (default: its name)
+    "params": [...]                 the knobs; params[i].port is the core port
+                                    carrying that knob (default: its name)
 
-Knob values follow wavsim's rules, so `0.5` means the same thing in a preset,
-on the CLI and on the simulator's command line:
+Knob values follow one set of rules, so `0.5` means the same thing in a spec, a
+preset and on the CLI:
 
     0.5 / 50%     natural units: scaled by `scale` (q16: x 65535) after factor/offset
     32768         a plain integer is the raw 16-bit value
@@ -40,9 +40,8 @@ PROVIDED_HEADERS = ("effect_contract.svh", "router_patch.svh")
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 HEADER_EXTS = (".svh", ".vh")
 
-# Keys fx.py understands; anything else (reference_model, cycles_per_sample...)
-# is kept as-is so a spec can round-trip to and from VerilogSim.
-_KNOWN = {"name", "description", "owner", "top", "module", "ports", "sources", "params"}
+# Every key a spec may have; anything else is a typo and is refused.
+_KNOWN = {"name", "description", "owner", "status", "top", "module", "ports", "sources", "params"}
 
 Value = Union[int, float, str]
 
@@ -102,11 +101,11 @@ class Param:
 
     @property
     def hi(self) -> int:
-        # A manifest may say 65536; the slot is 16 bits, so that is 65535.
+        # A spec may say 65536; the slot is 16 bits, so that is 65535.
         return PARAM_MAX if self.max is None else min(int(self.max), PARAM_MAX)
 
     def to_bits(self, value: Value) -> int:
-        """A user value -> the 16-bit field. The rules of wavsim.manifest.Param."""
+        """A user value -> the 16-bit field (see the module docstring)."""
         raw = self._normalise(value)
         if raw < self.lo or raw > self.hi:
             raise SpecError(f"{self.name}={value} resolves to {raw}, outside [{self.lo}, {self.hi}]")
@@ -155,7 +154,7 @@ class Spec:
     ports: Dict[str, Optional[str]] = field(default_factory=dict)
     description: str = ""
     owner: str = ""
-    extra: dict = field(default_factory=dict)
+    status: str = ""                 # a known issue, shown by the CLI's `fx` and in the README
     path: Optional[Path] = None      # the spec file
     root: Optional[Path] = None      # what `sources` are relative to
 
@@ -176,6 +175,9 @@ class Spec:
         for key in ("name", "sources"):
             if key not in raw:
                 raise SpecError(f"{where}: missing required key {key!r}")
+        unknown = sorted(set(raw) - _KNOWN)
+        if unknown:
+            raise SpecError(f"{where}: unknown keys {unknown}; a spec may have {sorted(_KNOWN)}")
         if not raw.get("top") and not raw.get("module"):
             raise SpecError(f"{where}: give either \"top\" (a contract wrapper among the sources) "
                             f"or \"module\" (the core module, so fx.py generates the wrapper)")
@@ -188,7 +190,7 @@ class Spec:
             ports=dict(raw.get("ports", {})),
             description=raw.get("description", ""),
             owner=raw.get("owner", ""),
-            extra={k: v for k, v in raw.items() if k not in _KNOWN},
+            status=raw.get("status", ""),
             path=Path(path),
             root=Path(root),
         )
@@ -205,7 +207,8 @@ class Spec:
             out["ports"] = self.ports
         out["sources"] = self.sources
         out["params"] = [p.to_json() for p in sorted(self.params, key=lambda p: p.index)]
-        out.update(self.extra)
+        if self.status:
+            out["status"] = self.status
         return out
 
     # -- derived -----------------------------------------------------------
@@ -239,7 +242,7 @@ class Spec:
         raise SpecError(f"{self.name} has no knob {name!r}; known: {known}")
 
     def resolve(self, overrides: Optional[Dict[str, Value]] = None) -> List[int]:
-        """The 8-slot knob bus: defaults, then overrides. wavsim's Manifest.resolve."""
+        """The 8-slot knob bus: defaults, then overrides."""
         overrides = overrides or {}
         for key in overrides:
             self.by_name(key)

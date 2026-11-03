@@ -1,11 +1,11 @@
 `timescale 1ns / 1ps
 `include "effect_contract.svh"
 
-// echo_top — harness wrapper for echo.sv.
+// echo_top — contract wrapper for echo.sv.
 //
 // No DSP here. It presents the standard interface from
-// rtl/common/effect_contract.svh and slices the parameter bus onto the port
-// names echo.sv uses. Slot numbers match configs/effects/echo.json.
+// router/rtl/effect_contract.svh and slices the parameter bus onto the port
+// names echo.sv uses. Slot numbers match effects/echo/effect.json.
 //
 //   slot 0  delay_samples  Spacing between repeats.
 //   slot 1  decay          Amplitude ratio between consecutive repeats.

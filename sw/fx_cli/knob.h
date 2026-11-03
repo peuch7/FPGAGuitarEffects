@@ -1,6 +1,6 @@
 /* knob.h - knob values between what people type and the 16-bit field the router reads.
  *
- * Same rules as the simulator (wavsim --param) and presets:
+ * Same rules as the effect specs and presets (scripts/fxlib/spec.py):
  *
  *   0.5   or 50%    natural units: (value - offset) / factor, then x 65535 for a q16
  *                   knob, rounded half-to-even exactly as Python's round()

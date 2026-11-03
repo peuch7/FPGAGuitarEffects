@@ -1,8 +1,8 @@
 """Tests for scripts/fx.py and fxlib.
 
 Most tests work on a scratch copy of the repo (the `repo` fixture), so they can
-add and remove effects freely. Tests that need Verilator or the sibling
-VerilogSim checkout skip themselves when those are missing.
+add and remove effects freely. Tests that need Verilator skip themselves when
+it is missing.
 
     python3 -m pytest -q scripts/tests
 """
@@ -10,7 +10,6 @@ VerilogSim checkout skip themselves when those are missing.
 from __future__ import annotations
 
 import json
-import random
 import shutil
 import subprocess
 import sys
@@ -27,10 +26,7 @@ from fxlib.layout import Layout  # noqa: E402
 from fxlib.project import FxError, Project, derive_spec  # noqa: E402
 from fxlib.spec import Spec, SpecError  # noqa: E402
 
-VERILOGSIM = ROOT.parent / "VerilogSim"
 needs_verilator = pytest.mark.skipif(shutil.which("verilator") is None, reason="needs verilator")
-needs_verilogsim = pytest.mark.skipif(not (VERILOGSIM / "configs" / "effects").is_dir(),
-                                      reason="needs ../VerilogSim")
 
 # A core module with its own port names, a narrow knob, and no reset: the case
 # the generated wrapper exists for.
@@ -97,7 +93,9 @@ def test_committed_gen_is_up_to_date():
     assert Project().gen(check_only=True) == [], "run: python3 scripts/fx.py gen"
 
 
-def test_registry_matches_verilogsim_ids():
+def test_registry_ids_are_pinned():
+    # Ids are what a saved patch means. Changing one is a breaking change, so it
+    # has to be deliberate: update this test along with it.
     reg = Project().registry
     assert reg.effects == {"overdrive": 1, "distortion": 2, "delay": 3, "echo": 4, "chorus": 5, "reverb": 6}
 
@@ -117,8 +115,8 @@ def test_readme_table_lists_every_effect(repo):
 
 
 def test_power_on_image_in_svh(repo):
-    stages = [stage for _, stage in dict((n, s) for n, _, s in repo.presets())["example_mesh"]]
-    repo.registry.power_on = "example_mesh"
+    stages = [stage for _, stage in dict((n, s) for n, _, s in repo.presets())["pedalboard"]]
+    repo.registry.power_on = "pedalboard"
     repo.registry.save()
     repo.gen()
     svh = (repo.layout.gen_rtl / "router_patch.svh").read_text()
@@ -126,48 +124,42 @@ def test_power_on_image_in_svh(repo):
         assert f"mem[{addr}] = 32'h{value:08x};" in svh
 
 
-@needs_verilogsim
-def test_svh_and_c_header_match_verilogsim(repo):
-    repo.registry.power_on = "example_mesh"
+def test_knob_value_rules():
+    q16 = Spec.load(ROOT / "effects" / "delay" / "effect.json").by_name("mix")
+    assert q16.to_bits("0.5") == 32768          # 32767.5 rounds half to even
+    assert q16.to_bits("50%") == 32768
+    assert q16.to_bits(0.25) == 16384
+    assert q16.to_bits("1234") == 1234          # a plain integer is raw
+    assert q16.to_bits("1.0") == 65535
+    with pytest.raises(SpecError, match="outside"):
+        q16.to_bits("1.5")
+    rate = Spec.load(ROOT / "effects" / "chorus" / "effect.json").by_name("rate")   # raw, factor 0.01
+    assert rate.to_bits("0.55") == 55 and rate.to_bits("8.0") == 800
+    with pytest.raises(SpecError, match="outside"):
+        rate.to_bits("0.05")                    # 5 is below min 10
+    samples = Spec.load(ROOT / "effects" / "delay" / "effect.json").by_name("delay_samples")
+    assert samples.to_bits("2.5") == 2 and samples.to_bits("3.5") == 4      # half to even
+
+
+@needs_verilator
+def test_power_on_image_runs_like_the_same_preset_written_by_the_arm(repo, tmp_path):
+    # The bitstream's power-on patch (BRAM initial contents) must behave exactly
+    # like the CLI writing that preset: same words, same sound.
+    repo.registry.power_on = "pedalboard"
     repo.registry.save()
     repo.gen()
-
-    def code(path, comment):
-        return [l for l in path.read_text().splitlines() if l.strip() and not l.lstrip().startswith(comment)]
-
-    assert code(repo.layout.gen_rtl / "router_patch.svh", "//") == \
-        code(VERILOGSIM / "rtl" / "router" / "router_patch.svh", "//")
-    ours = (repo.layout.gen_sw / "router_map.h").read_text()
-    theirs = (VERILOGSIM / "sw" / "router_map.h").read_text()
-    assert ours[ours.index("#ifndef"):].replace("effects/<name>/effect.json", "configs/effects/<name>.json") \
-        == theirs[theirs.index("#ifndef"):]
-
-
-@needs_verilogsim
-def test_knob_bits_match_wavsim(repo):
-    sys.path.insert(0, str(VERILOGSIM / "tools"))
-    try:
-        from wavsim.manifest import Manifest, ManifestError
-    except ImportError as exc:   # wavsim needs numpy for some modules
-        pytest.skip(f"cannot import wavsim: {exc}")
-    rng = random.Random(3)
-    for spec, _ in repo.effects():
-        theirs = Manifest.load(VERILOGSIM / "configs" / "effects" / f"{spec.name}.json")
-        assert spec.resolve() == theirs.resolve()
-        for p in spec.params:
-            for _ in range(50):
-                text = f"{rng.uniform(-0.05, 1.05) * (p.natural(p.hi) - p.natural(p.lo)) + p.natural(p.lo):.4f}"
-                try:
-                    want = theirs.by_name(p.name).to_bits(text)
-                except ManifestError:
-                    want = None
-                try:
-                    got = p.to_bits(text)
-                except SpecError:
-                    got = None
-                if want is not None and want > 65535:
-                    continue        # the manifest allows 65536; we clamp to the 16-bit slot
-                assert got == want, (spec.name, p.name, text)
+    work = tmp_path / "work"
+    work.mkdir()
+    exe = sim.compile_tb(repo.layout, work)
+    stages = [stage for _, stage in dict((n, s) for n, _, s in repo.presets())["pedalboard"]]
+    (work / "arm.patch").write_text("".join(
+        f"{a:x} {v:x}\n" for a, v in rm.bank_writes(stages, 1) + [(rm.CTRL_WORD, 1)]))
+    outs = []
+    for extra in ([], [f"+patch={work / 'arm.patch'}"]):
+        out = work / f"out{len(outs)}.txt"
+        subprocess.run([str(exe), "+n=3000", f"+out={out}", *extra], check=True, capture_output=True)
+        outs.append(out.read_text())
+    assert len(outs[0].split()) == 3000 and outs[0] == outs[1]
 
 
 # -- ids -------------------------------------------------------------------------
@@ -175,9 +167,9 @@ def test_knob_bits_match_wavsim(repo):
 def test_ids_are_append_only(repo, tmp_path):
     assert repo.remove_effect("echo") == 4
     assert repo.registry.retired == {"echo": 4}
-    fx_id = repo.import_effect(Spec.load(tremolo_spec(tmp_path)), "test\n")
+    fx_id = repo.import_effect(Spec.load(tremolo_spec(tmp_path)))
     assert fx_id == 7, "a retired id must not be reused"
-    assert repo.import_effect(Spec.load(repo.layout.spec_path("echo")), "test\n") == 4
+    assert repo.import_effect(Spec.load(repo.layout.spec_path("echo"))) == 4
     repo.gen()
     svh = (repo.layout.gen_rtl / "router_patch.svh").read_text()
     assert "`define ROUTER_N_FX        7" in svh
@@ -187,12 +179,6 @@ def test_remove_refuses_effect_used_by_a_preset(repo):
     with pytest.raises(FxError, match="used by"):
         repo.remove_effect("delay")
     assert "delay" in repo.registry.effects
-
-
-def test_upstream_id_conflict_is_refused(repo, tmp_path):
-    spec = Spec.load(tremolo_spec(tmp_path))
-    with pytest.raises(FxError, match="belongs to"):
-        repo.import_effect(spec, "test\n", wanted_id=3)
 
 
 # -- spec validation -------------------------------------------------------------
@@ -205,6 +191,7 @@ def test_upstream_id_conflict_is_refused(repo, tmp_path):
     (lambda s: s.update(top="tremolo_top"), "not both"),
     (lambda s: s["ports"].update(sample_in=None), "cannot be null"),
     (lambda s: s.update(sources=["missing.sv"]), "not found"),
+    (lambda s: s.update(reference_model="x"), "unknown keys"),
 ])
 def test_spec_errors(tmp_path, change, message):
     path = tremolo_spec(tmp_path)
@@ -221,7 +208,7 @@ def test_rtl_mismatch_is_caught_before_anything_is_registered(repo, tmp_path):
     raw["params"][1]["port"] = "speed"          # no such port on tremolo
     path.write_text(json.dumps(raw))
     with pytest.raises(FxError, match="does not exist"):
-        repo.import_effect(Spec.load(path), "test\n")
+        repo.import_effect(Spec.load(path))
     assert "tremolo" not in repo.registry.effects
 
 
@@ -234,7 +221,7 @@ def test_wide_knob_port_is_refused(tmp_path):
 def test_module_name_clash_is_refused(repo, tmp_path):
     (tmp_path / "delay2.sv").write_text(TREMOLO_CONTRACT_SV.replace("module tremolo", "module delay"))
     spec = derive_spec([tmp_path / "delay2.sv"], name="delay2")
-    repo.import_effect(spec, "test\n")
+    repo.import_effect(spec)
     with pytest.raises(FxError, match="module delay is defined by both"):
         repo.validate()
 
@@ -257,7 +244,7 @@ def test_derived_spec_from_contract_wrapper():
 
 
 def test_wrapper_slices_and_renames(repo, tmp_path):
-    repo.import_effect(Spec.load(tremolo_spec(tmp_path)), "test\n")
+    repo.import_effect(Spec.load(tremolo_spec(tmp_path)))
     repo.gen()
     text = (repo.layout.gen_rtl / "tremolo_top.sv").read_text()
     assert ".clock" in text and "(clk)" in text and ".x " in text
@@ -271,7 +258,7 @@ def test_narrow_q16_knob_takes_the_top_bits(repo, tmp_path):
     raw = json.loads(path.read_text())
     raw["params"][0] = {"name": "depth", "index": 0, "default": 0.5, "scale": "q16"}
     path.write_text(json.dumps(raw))
-    repo.import_effect(Spec.load(path), "test\n")
+    repo.import_effect(Spec.load(path))
     repo.gen()
     assert "knob_depth[15:8]" in (repo.layout.gen_rtl / "tremolo_top.sv").read_text()
 
@@ -282,11 +269,11 @@ def test_raw_knob_too_big_for_its_port_is_refused(repo, tmp_path):
     raw["params"][0]["max"] = 1000
     path.write_text(json.dumps(raw))
     with pytest.raises(FxError, match="does not fit the 8-bit port"):
-        repo.import_effect(Spec.load(path), "test\n")
+        repo.import_effect(Spec.load(path))
 
 
 def test_removed_wrapper_is_deleted(repo, tmp_path):
-    repo.import_effect(Spec.load(tremolo_spec(tmp_path)), "test\n")
+    repo.import_effect(Spec.load(tremolo_spec(tmp_path)))
     repo.gen()
     repo.remove_effect("tremolo")
     repo.gen()
@@ -295,7 +282,7 @@ def test_removed_wrapper_is_deleted(repo, tmp_path):
 
 @needs_verilator
 def test_new_effect_lints_and_runs_through_the_router(repo, tmp_path):
-    repo.import_effect(Spec.load(tremolo_spec(tmp_path)), "test\n")
+    repo.import_effect(Spec.load(tremolo_spec(tmp_path)))
     repo.gen()
     ok, text = sim.lint(repo.layout)
     assert ok, text
@@ -315,30 +302,31 @@ def test_retired_id_in_a_patch_is_bypassed_not_hung(repo, tmp_path):
     assert stats["samples_out"] == stats["samples_in"] and not stats["fx_timeout"]
 
 
-# -- bringing effects in from VerilogSim ---------------------------------------------
+# -- the command line --------------------------------------------------------------
 
-@needs_verilogsim
-@needs_verilator
-def test_sync_lowpass_and_add_highpass_end_to_end(repo, tmp_path):
-    # The manifest path: VerilogSim's own spec, with its contract wrapper.
-    done = repo.sync_effects(VERILOGSIM, ["lowpass"])
-    assert done[0][0] == "lowpass" and done[0][1] == 7
-    # The RTL-only path: the core module, spec derived, wrapper generated.
-    spec = derive_spec([VERILOGSIM / "rtl" / "effects" / "highpass" / "highpass.sv"], name="highpass2")
-    assert spec.module == "highpass" and [p.name for p in spec.params] == ["cutoff_hz"]
-    spec.params[0].min, spec.params[0].default = 100, 200
-    repo.import_effect(spec, "test\n")
-    repo.gen()
-    assert (repo.layout.gen_rtl / "highpass2_top.sv").exists()
-    ok, text = sim.lint(repo.layout)
-    assert ok, text
-    ok, lines = sim.smoke(repo, n=32)
-    assert ok, "\n".join(lines)
-    table = (repo.layout.gen_sw / "fx_table.c").read_text()
-    assert '"lowpass", 7' in table and '"highpass2", 8' in table
+def fx(repo, *args):
+    return subprocess.run([sys.executable, str(ROOT / "scripts" / "fx.py"), "--root",
+                           str(repo.layout.root), *map(str, args)], capture_output=True, text=True)
 
 
-def test_cli_entry_point(repo):
-    res = subprocess.run([sys.executable, str(ROOT / "scripts" / "fx.py"), "--root", str(repo.layout.root),
-                          "list"], capture_output=True, text=True)
+def test_add_from_bare_rtl_on_the_command_line(repo, tmp_path):
+    (tmp_path / "tremolo.sv").write_text(TREMOLO_CONTRACT_SV)
+    res = fx(repo, "add", tmp_path / "tremolo.sv")
+    assert res.returncode == 0, res.stderr
+    assert "added tremolo as id 7" in res.stdout
+    assert (repo.layout.gen_rtl / "tremolo_top.sv").exists()
+    assert '"tremolo", 7' in (repo.layout.gen_sw / "fx_table.c").read_text()
+
+
+def test_re_adding_an_effect_from_its_own_folder_keeps_it(repo):
+    before = (repo.layout.effect_dir("chorus") / "rtl" / "chorus.sv").read_text()
+    res = fx(repo, "add", repo.layout.spec_path("chorus"))
+    assert res.returncode == 0, res.stderr
+    assert "added chorus as id 5" in res.stdout
+    assert (repo.layout.effect_dir("chorus") / "rtl" / "chorus.sv").read_text() == before
+    assert (repo.layout.effect_dir("chorus") / "rtl" / "chorus_sine_table.svh").exists()
+
+
+def test_list(repo):
+    res = fx(repo, "list")
     assert res.returncode == 0 and "reverb" in res.stdout

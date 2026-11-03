@@ -189,9 +189,9 @@ constraints, the address map or the CLI code. The full guide is in
 [docs/adding_an_effect.md](docs/adding_an_effect.md). In short:
 
 ```sh
-python3 scripts/fx.py sync --effects lowpass       # from ../VerilogSim (commit it there first)
-python3 scripts/fx.py add path/to/myfx.json        # from your own spec + RTL
+python3 scripts/fx.py add path/to/myfx.json        # a new effect: its spec + RTL
 python3 scripts/fx.py add path/to/myfx.sv          # from bare RTL; review the derived spec it prints
+python3 scripts/fx.py add effects/delay/effect.json   # after editing an effect's RTL or spec (keeps its id)
 python3 scripts/fx.py check                        # lint + simulate every effect through the router
 ```
 
@@ -215,17 +215,6 @@ are generated too.
 Reopening the project with `vivado/create_project.tcl` also refreshes the file list
 and the module references, so that works too.
 
-### Pulling updated effects or the router from VerilogSim
-
-```sh
-python3 scripts/fx.py sync --router                # router core + every effect VerilogSim's router has
-python3 sim/compare_verilogsim.py                  # optional: this build is bit-identical to VerilogSim's
-```
-
-`sync` copies files and records the VerilogSim commit in `SOURCE.txt`. If the copied
-files are uncommitted over there, it warns. It adopts VerilogSim's effect ids so a
-patch means the same thing in both places.
-
 ## 7. Troubleshooting
 
 | symptom | likely cause and fix |
@@ -236,8 +225,8 @@ patch means the same thing in both places.
 | Audio flows but you hear nothing | Use a dual-mono adapter (the right channel is the input). Try `gain 12` and `vol 0`, and check the cable is in LINE IN, not MIC IN. Try `clear` to rule out an effect setting. |
 | Very quiet with overdrive | `drive` is Q8.8: `drive=8` is 1/32x. Use 256 for 1x and 2048 for 8x. |
 | LD0 on / `status` shows OVERRUN | The chain takes longer than 256 clocks per sample. Run `fx.py check`, which reports each effect's cost. |
-| LD1 on / FX TIMEOUT | An effect never raised `sample_out_valid` and was bypassed. Check that effect in VerilogSim. |
-| Vivado: placement fails on block RAM | Over the Z7-10's 60 RAMB36. Remove an effect (`fx.py remove`) or shrink a delay line in VerilogSim. |
+| LD1 on / FX TIMEOUT | An effect never raised `sample_out_valid` and was bypassed. `fx.py check` shows which one. |
+| Vivado: placement fails on block RAM | Over the Z7-10's 60 RAMB36. Remove an effect (`fx.py remove`) or shrink a delay line (e.g. `MAX_DELAY_SAMPLES` in `effects/delay/rtl/delay.sv`). |
 | Vivado: `update_module_reference` or module reference errors after adding an effect | Run `source gen/vivado/sources.tcl` first, then *Refresh Changed Modules*. Or use `vivado/create_project.tcl -tclargs --force`. |
 | Vitis: undefined reference to `rint` or `llrint` | Add the `m` library to the app's linker libraries; the script does this. |
 | A hand-written step in `vivado/design_1.tcl` fails on a new Vivado version | Use the GUI track to fix the block design, then save it back over `vivado/design_1.tcl` with `write_bd_tcl -force vivado/design_1.tcl`, and check the diff. |

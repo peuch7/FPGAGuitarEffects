@@ -39,37 +39,29 @@ module <name>_top (
   `params` steady between strobes.
 - **Block RAM:** the board has 60 RAMB36, and the six current effects use about 50.
 
-The best place to write and verify an effect is VerilogSim, which has reference
-models, golden tests and a WAV in/out harness. Bring it here once it passes there.
-
 ## Three ways in
 
-### 1. From VerilogSim (recommended)
+### 1. Write it in place
+
+Create `effects/tremolo/` with your RTL in `effects/tremolo/rtl/` and a spec in
+`effects/tremolo/effect.json` (format below), then register it:
 
 ```sh
-python3 scripts/fx.py sync --effects tremolo     # needs ../VerilogSim/configs/effects/tremolo.json
+python3 scripts/fx.py add effects/tremolo/effect.json
+python3 scripts/fx.py check
 ```
 
-VerilogSim's manifest is used as the spec, unchanged. `sync`:
-- copies the sources it lists, plus every header they `` `include``, into
-  `effects/tremolo/rtl/`;
-- uses VerilogSim's router id if it has one (from its `sw/router_map.h`), and
-  otherwise the next free id;
-- records the VerilogSim commit in `effects/tremolo/SOURCE.txt`.
+### 2. From a spec and RTL kept elsewhere
 
-Commit the effect in VerilogSim first, so that record points at a real version.
-Run the same command again to pick up later changes.
-
-### 2. From a spec and your RTL
-
-Write a spec. It uses VerilogSim's manifest format, plus three optional keys,
-`module`, `ports` and a per-knob `port`. With them, fx.py writes the contract wrapper
-for you:
+`add` copies the sources into `effects/<name>/rtl/`. A spec names the effect, its
+sources and its knobs. With `module`, `ports` and a per-knob `port`, fx.py writes the
+contract wrapper for you:
 
 ```jsonc
 {
   "name": "tremolo",                       // lower-case identifier; becomes FX_TREMOLO, `add tremolo`
   "description": "Amplitude wobble.",      // shown by the CLI's `fx` and in the README
+  "status": "",                            // optional: a known issue, shown next to the description
   "module": "tremolo",                     // your core module; fx.py generates gen/rtl/tremolo_top.sv
   "ports": {                               // only where your names differ from the contract's
     "clk": "clock", "sample_in": "x", "sample_out": "y",
@@ -93,8 +85,9 @@ python3 scripts/fx.py add tremolo.json rtl/a.sv rtl/b.sv   # ...or listed on the
 ```
 
 If your RTL already has a `<name>_top` that meets the contract, give
-`"top": "tremolo_top"` instead of `"module"` and include that file in `sources`. Every
-VerilogSim effect works this way.
+`"top": "tremolo_top"` instead of `"module"` and include that file in `sources`. All
+six current effects work this way. A spec with any other key is refused, so a typo
+can't be silently ignored.
 
 ### 3. From bare RTL
 
@@ -112,6 +105,34 @@ fx.py reads the ports and writes a starting spec, which it prints:
 Edit `effects/<name>/effect.json` to give the knobs proper scales, ranges, defaults
 and docs, then run `python3 scripts/fx.py gen`.
 
+## Changing an effect that's already in
+
+The files in `effects/<name>/` are ordinary source: edit them in place.
+
+- **RTL only:** run `python3 scripts/fx.py check` to lint it and run it through the
+  router.
+- **Knobs, description or default values in `effect.json`:** run `fx.py gen`.
+- **A new source file:** add it to `sources` in `effect.json`, then run
+  `fx.py add effects/<name>/effect.json`. That re-registers the effect with the same
+  id, and finds any new `` `include``d headers by itself.
+- **The chorus's `base_ms` or `depth` knobs:** also rerun
+  `python3 effects/chorus/gen_sine_table.py`, which derives the chorus's delay
+  scaling and buffer size from them.
+
+Then rebuild (INSTALL.md, section 6).
+
+## Testing an effect
+
+- `fx.py check` proves it routes:
+  - one output per input;
+  - no timeout;
+  - its cost in clocks fits the budget.
+- `sim/tb_router.sv` plays any sample list through any patch: `+in` and `+out`
+  are one signed 24-bit integer per line, and `+patch` takes the BRAM stores.
+  `fx.py check --keep DIR` leaves example patch files in `DIR`.
+- There are no reference models or WAV tools in this repo. Judging how an effect
+  sounds still means listening on the board, or converting `+out` to a WAV yourself.
+
 ## Knob scales
 
 A knob is 16 bits on the bus. The spec says how people's numbers map onto it:
@@ -123,8 +144,9 @@ A knob is 16 bits on the bus. The spec says how people's numbers map onto it:
 | `"scale": "raw", "factor": 0.01` | centi-units | 50 | 50 | raw 1234 (= 12.34) |
 
 A number with a `.`, an `e` or a `%` is in natural units. A plain integer is the raw
-field. These are the same rules as `wavsim --param` in VerilogSim, the presets, and
-the CLI's `set`, and the tests check that all three agree bit for bit. `min` and
+field. The same rules apply in specs, in presets and in the CLI's `set`; the tests
+check that the Python generator and the C firmware agree bit for bit, rounding
+included. `min` and
 `max` are raw values, and `default` follows the same rules as any other value.
 
 ## What `fx.py` checks and generates
@@ -139,8 +161,9 @@ python3 scripts/fx.py check
 - **module names and header names are unique across all effects**, because Vivado
   shares one namespace and one include path;
 - a contract top really has the contract ports;
-- a core module has every port the spec names; knob ports are 16 bits or narrower,
-  and narrower ones are sliced; every core input is mapped;
+- a core module has every port the spec names, and every core input is mapped;
+- knob ports are 16 bits or narrower. A `q16` knob on a narrower port gets its top
+  bits; a raw knob gets its low bits, and its `max` must fit the port;
 - presets only use effects in the build, each at most once, at most 7 stages.
 
 **Simulation, with Verilator:**
@@ -152,14 +175,14 @@ python3 scripts/fx.py check
 - runs the 7 most expensive effects in a row at the board's 256 clocks per sample
   and checks there is no overrun.
 
-`fx.py gen` (run by `add`, `sync`, `remove` and `power-on`) writes:
+`fx.py gen` (run by `add`, `remove` and `power-on`) writes:
 
 | file | used by |
 |---|---|
 | `gen/rtl/effect_bank.sv` | `router_pl`: one instance per effect |
 | `gen/rtl/router_patch.svh` | the router: ids, memory map, power-on patch in the BRAM's initial contents |
 | `gen/rtl/<name>_top.sv` | wrappers for specs that give `module` |
-| `gen/sw/router_map.h` | the CLI: patch memory API (same as VerilogSim's `sw/router_map.h`) |
+| `gen/sw/router_map.h` | the CLI: patch memory API (map in `scripts/fxlib/routermap.py`) |
 | `gen/sw/fx_table.{c,h}` | the CLI: effects, knobs, presets |
 | `gen/vivado/sources.tcl` | Vivado: file list and include path (idempotent; re-source it in an open project) |
 | `gen/sim/sources.f` | Verilator and Icarus file list |
@@ -177,16 +200,15 @@ The id is what the ARM writes into patch memory to select an effect. Ids are kep
   effect. A stale patch can't silently select the wrong effect: an id with no effect
   is bypassed in zero clocks.
 - **Re-adding a removed effect** gets its old id back.
-- **Ids are adopted from VerilogSim** where it has one, so the same patch means the
-  same thing in the simulator and on the board. If the two ever disagree, fx.py
-  stops and asks you to reconcile them by hand.
+- **A test pins the current ids** (`scripts/tests/test_fx.py`), so changing one has to
+  be deliberate.
 
 `remove` refuses while a preset still uses the effect. `remove --delete` also deletes
 `effects/<name>/`.
 
 ## Presets and the power-on patch
 
-A preset is a chain, in the same format as VerilogSim's `configs/chains/*.json`:
+A preset is a named chain:
 
 ```json
 {
@@ -202,8 +224,7 @@ A preset is a chain, in the same format as VerilogSim's `configs/chains/*.json`:
 Save it as `presets/crunch.json` (the file name must match `name`), then run
 `fx.py gen`. It shows up in the CLI's `preset` list after the app is rebuilt.
 `fx.py power-on crunch` makes it the chain the bitstream starts with, held in the
-BRAM's initial contents; rebuild the bitstream to apply that. `fx.py sync --presets`
-copies VerilogSim's chains, as long as all their effects are in the build.
+BRAM's initial contents; rebuild the bitstream to apply that.
 
 ## After adding: rebuild
 

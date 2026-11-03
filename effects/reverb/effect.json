@@ -28,8 +28,5 @@
       "scale": "q16",
       "doc": "Dry/wet balance."
     }
-  ],
-  "cycles_per_sample": 32,
-  "flush_samples": 16,
-  "reference_model": "wavsim.refmodels.reverb:process"
+  ]
 }

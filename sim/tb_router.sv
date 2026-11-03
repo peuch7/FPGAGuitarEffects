@@ -8,7 +8,8 @@
 // on its own, faster clock, as the AXI BRAM Controller does for the ARM.
 //
 // Used by `fx.py check` (per-effect smoke runs and the cycle budget) and by
-// sim/Makefile (bit-exact comparison against VerilogSim, bank swaps).
+// scripts/tests (power-on image vs. ARM writes, retired ids). It can also run
+// any recording through any patch: +in and +out are plain sample lists.
 //
 // Plusargs:
 //   +cps=N                  clocks per sample (default 256)

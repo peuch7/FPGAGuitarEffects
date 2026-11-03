@@ -2,7 +2,7 @@
 //
 // reverb.sv
 //
-// Schroeder/Moorer-style reverb used by tools/wavsim/refmodels/reverb.py:
+// Schroeder/Moorer-style reverb:
 //
 //     four parallel damped feedback comb filters
 //                       |
@@ -18,16 +18,16 @@
 //                       v
 //                  dry / wet mix
 //
-// The delay lengths are the same as the Python reference model at 48 kHz.
+// The delay lengths are tuned for 48 kHz.
 // Internal delay-line samples are kept as signed Q23 values with 32 total bits
 // (8 bits of headroom above the 24-bit external audio format).  The extra
 // headroom prevents the comb recirculation from wrapping while still mapping
 // efficiently into the Zybo's 36-kbit BRAMs.
 //
 // One input sample takes four processing clocks after it is accepted:
-// combs -> allpass 1 -> allpass 2 -> mix/output.  The project gives this effect
-// 32 clocks per input sample in configs/effects/reverb.json, so there is ample
-// timing margin and no back-pressure is required.
+// combs -> allpass 1 -> allpass 2 -> mix/output.  The whole chain gets 256
+// clocks per sample on the board, so there is ample timing margin and no
+// back-pressure is required.
 //
 module reverb (
     input  logic                            clk,

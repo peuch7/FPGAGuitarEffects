@@ -1,11 +1,11 @@
 `timescale 1ns / 1ps
 `include "effect_contract.svh"
 
-// overdrive_top — harness wrapper for overdrive.sv.
+// overdrive_top — contract wrapper for overdrive.sv.
 //
 // No DSP here. It presents the standard interface from
-// rtl/common/effect_contract.svh and slices the parameter bus onto the port
-// names overdrive.sv uses. Slot numbers match configs/effects/overdrive.json.
+// router/rtl/effect_contract.svh and slices the parameter bus onto the port
+// names overdrive.sv uses. Slot numbers match effects/overdrive/effect.json.
 //
 //   slot 0  drive      Gain into the tanh curve.
 //   slot 1  tone       Same one-pole tilt as distortion.

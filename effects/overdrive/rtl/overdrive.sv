@@ -3,16 +3,14 @@
 //
 // overdrive.sv
 //
-// TODO (you): implement soft-clipping (tanh) overdrive
+// Soft-clipping (tanh) overdrive. drive is Q8.8 (256 = gain 1.0); tone and
+// asymmetry are not implemented yet.
 //
-// Right now this is a passthrough, so `wavsim run --effect overdrive` already works
-// end to end. Replace the body below; keep the port list and the valid protocol.
-//
-// The protocol the harness relies on:
+// The valid protocol (router/rtl/effect_contract.svh):
 //   * sample_in_valid pulses high for one clock per input sample.
 //   * Raise sample_out_valid for one clock per output sample you produce.
-//   * Latency is yours to choose. If you need more than 32 clocks between
-//     samples, raise "cycles_per_sample" in configs/effects/overdrive.json.
+//   * Latency is yours to choose, within the 256 clocks per sample the whole
+//     chain shares on the board; `python3 scripts/fx.py check` measures it.
 //
 module overdrive (
     input  logic                            clk,

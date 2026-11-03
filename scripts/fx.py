@@ -6,9 +6,8 @@ router's ids and power-on patch, the CLI's tables, the Vivado and simulator
 file lists, the README's effect table) is generated from effects/ and presets/.
 
     fx.py list                                  what is in the build
-    fx.py sync [--sim ../VerilogSim] [--router] [--effects a,b]
-                                                bring effects (and the router core) from VerilogSim
-    fx.py add SPEC.json [--root DIR]            add an effect described by a spec
+    fx.py add SPEC.json [--root DIR]            add an effect described by a spec; also
+                                                re-registers effects/<name>/effect.json after edits
     fx.py add RTL.sv [RTL.sv ...] [--module M] [--name N] [--spec SPEC.json]
                                                 add an effect from its RTL; without --spec a
                                                 starting spec is derived from the ports
@@ -49,19 +48,16 @@ def _report_gen(project: Project, changed) -> None:
 def cmd_list(project: Project, args) -> int:
     effects = project.effects()
     if not effects:
-        print("no effects registered; try: fx.py sync")
+        print("no effects registered; try: fx.py add path/to/effect.json")
         return 0
     for spec, fx_id in effects:
         kind = f"wrapper generated for {spec.module}" if spec.generates_wrapper else spec.top
-        status = f"  [{spec.extra['status']}]" if spec.extra.get("status") else ""
+        status = f"  [{spec.status}]" if spec.status else ""
         print(f"{fx_id:>3}  {spec.name:<12} {kind}{status}")
         if args.verbose:
             print(f"       {spec.description}")
             for p in sorted(spec.params, key=lambda p: p.index):
                 print(f"       slot {p.index}: {p.describe()}")
-            origin = (project.layout.effect_dir(spec.name) / "SOURCE.txt")
-            if origin.exists():
-                print("       " + origin.read_text().splitlines()[0])
     if project.registry.retired:
         print("retired ids: " + ", ".join(f"{n}={i}" for n, i in project.registry.retired.items()))
     print(f"power-on preset: {project.registry.power_on}")
@@ -81,28 +77,6 @@ def cmd_gen(project: Project, args) -> int:
         print("gen/ is up to date")
         return 0
     _report_gen(project, changed)
-    return 0
-
-
-def cmd_sync(project: Project, args) -> int:
-    sim_root = Path(args.sim).resolve()
-    if not (sim_root / "configs" / "effects").is_dir():
-        raise FxError(f"{sim_root} does not look like a VerilogSim checkout (no configs/effects)")
-    if args.router:
-        text = project.sync_router(sim_root)
-        print("router core synced -> router/rtl")
-        if "NOT CLEAN" in text:
-            print("warning: the router files are uncommitted or modified in VerilogSim; "
-                  "commit them there so router/SOURCE.txt points at a real version")
-    names = args.effects.split(",") if args.effects else None
-    for name, fx_id, note in project.sync_effects(sim_root, names):
-        source = (project.layout.effect_dir(name) / "SOURCE.txt").read_text()
-        flag = "  (uncommitted in VerilogSim)" if "NOT CLEAN" in source else ""
-        print(f"  {name:<12} id {fx_id}{'  ' + note if note else ''}{flag}")
-    if args.presets:
-        copied = project.sync_presets(sim_root)
-        print(f"presets copied: {', '.join(copied) or '(none)'}")
-    _report_gen(project, project.gen())
     return 0
 
 
@@ -136,8 +110,7 @@ def cmd_add(project: Project, args) -> int:
         spec = derive_spec(rtl, module=args.module, name=args.name)
         derived = True
 
-    origin = "origin: " + ", ".join(str(p.resolve()) for p in specs + rtl) + "\n"
-    fx_id = project.import_effect(spec, origin)
+    fx_id = project.import_effect(spec)
     print(f"added {spec.name} as id {fx_id} -> effects/{spec.name}/")
     if derived:
         print(f"spec derived from the RTL; review effects/{spec.name}/effect.json "
@@ -205,13 +178,6 @@ def main(argv=None) -> int:
     p = sub.add_parser("gen", help="regenerate gen/ and the README table")
     p.add_argument("--check", action="store_true", help="only report whether gen/ is stale")
     p.set_defaults(func=cmd_gen)
-
-    p = sub.add_parser("sync", help="bring effects and the router core from VerilogSim")
-    p.add_argument("--sim", default=str(Layout.default().root.parent / "VerilogSim"))
-    p.add_argument("--effects", help="comma-separated names (default: VerilogSim's router set)")
-    p.add_argument("--router", action="store_true", help="also refresh router/rtl")
-    p.add_argument("--presets", action="store_true", help="also copy configs/chains/*.json to presets/")
-    p.set_defaults(func=cmd_sync)
 
     p = sub.add_parser("add", help="add an effect from a spec and/or RTL")
     p.add_argument("inputs", nargs="+", help="a spec .json and/or RTL files (.sv/.v/.svh)")

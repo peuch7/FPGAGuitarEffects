@@ -4,14 +4,14 @@
 //
 // TODO (you): implement a fixed number of discrete decaying repeats (feed-forward taps)
 //
-// Right now this is a passthrough, so `wavsim run --effect echo` already works
-// end to end. Replace the body below; keep the port list and the valid protocol.
+// Right now this is a passthrough, so it already runs in the router and on the
+// board. Replace the body below; keep the port list and the valid protocol.
 //
-// The protocol the harness relies on:
+// The valid protocol (router/rtl/effect_contract.svh):
 //   * sample_in_valid pulses high for one clock per input sample.
 //   * Raise sample_out_valid for one clock per output sample you produce.
-//   * Latency is yours to choose. If you need more than 32 clocks between
-//     samples, raise "cycles_per_sample" in configs/effects/echo.json.
+//   * Latency is yours to choose, within the 256 clocks per sample the whole
+//     chain shares on the board; `python3 scripts/fx.py check` measures it.
 //
 module echo (
     input  logic                            clk,

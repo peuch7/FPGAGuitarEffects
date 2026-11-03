@@ -15,8 +15,8 @@
 //   range in the address editor; only the first 1 KB is decoded and the rest
 //   aliases it.
 //
-// The ARM side of the protocol is sw/router_map.h. In simulation,
-// router_top.sv stands in for the ARM and the controller.
+// The ARM side of the protocol is gen/sw/router_map.h. In simulation,
+// sim/tb_router.sv stands in for the ARM and the controller.
 
 module router_pl #(
     parameter int BRAM_ADDR_W = 12    // byte address from the controller: 4 KB range

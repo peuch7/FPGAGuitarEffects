@@ -1,11 +1,11 @@
 `timescale 1ns / 1ps
 `include "effect_contract.svh"
 
-// distortion_top — harness wrapper for distortion.sv.
+// distortion_top — contract wrapper for distortion.sv.
 //
 // No DSP here. It presents the standard interface from
-// rtl/common/effect_contract.svh and slices the parameter bus onto the port
-// names distortion.sv uses. Slot numbers match configs/effects/distortion.json.
+// router/rtl/effect_contract.svh and slices the parameter bus onto the port
+// names distortion.sv uses. Slot numbers match effects/distortion/effect.json.
 //
 //   slot 0  drive  Pre-clip gain. The clip threshold stays at full scale.
 //   slot 1  tone   0 = dark (~800 Hz one-pole), 1 = open (~12 kHz).

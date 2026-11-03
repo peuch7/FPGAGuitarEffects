@@ -1,11 +1,11 @@
 `timescale 1ns / 1ps
 `include "effect_contract.svh"
 
-// reverb_top — harness wrapper for reverb.sv.
+// reverb_top — contract wrapper for reverb.sv.
 //
 // No DSP here. It presents the standard interface from
-// rtl/common/effect_contract.svh and slices the parameter bus onto the port
-// names reverb.sv uses. Slot numbers match configs/effects/reverb.json.
+// router/rtl/effect_contract.svh and slices the parameter bus onto the port
+// names reverb.sv uses. Slot numbers match effects/reverb/effect.json.
 //
 //   slot 0  decay    Comb feedback. Higher = longer tail.
 //   slot 1  damping  Lowpass inside the comb loop, so highs decay first.

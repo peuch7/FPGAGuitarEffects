@@ -1,5 +1,5 @@
 {
-  "_comment": "Written by scripts/fx.py; edit with fx.py add/sync/remove. Ids are append-only: a retired id is never given to another effect.",
+  "_comment": "Written by scripts/fx.py; edit with fx.py add/remove/power-on. Ids are append-only: a retired id is never given to another effect.",
   "power_on": "clean",
   "effects": {
     "overdrive": 1,

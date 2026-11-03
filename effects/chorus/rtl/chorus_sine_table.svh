@@ -1,7 +1,7 @@
 // chorus_sine_table.svh - GENERATED, do not edit.
 //
 // One full sine cycle, 1024 points, Q23 signed.
-// Regenerate with: python3 scripts/gen_sine_table.py
+// Regenerate with: python3 effects/chorus/gen_sine_table.py
 //
 // Explicit assignments rather than a localparam array: Icarus does not
 // accept localparam unpacked arrays, and Vivado does not accept $sin in
@@ -18,8 +18,8 @@
 `define CHORUS_PHASE_INC_FRAC 16
 `define CHORUS_PHASE_INC_PER_CENTIHZ 58640620
 
-// Delay scaling, derived from configs/effects/chorus.json so the RTL
-// never restates a unit the manifest owns.
+// Delay scaling, derived from effects/chorus/effect.json so the RTL
+// never restates a unit the spec owns.
 //   base_ms  : 1 bit = 0.1 ms, max 300
 //   depth    : 1 bit = 0.01 ms, max 1000
 //   reach    : 40.0 ms = 1922 samples -> buffer 2048

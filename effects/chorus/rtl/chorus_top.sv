@@ -1,14 +1,14 @@
 `timescale 1ns / 1ps
 `include "effect_contract.svh"
 
-// chorus_top — harness wrapper for chorus.sv.
+// chorus_top — contract wrapper for chorus.sv.
 //
 // No DSP here. It presents the standard interface from
-// rtl/common/effect_contract.svh and slices the parameter bus onto the port
-// names chorus.sv uses. Slot numbers match configs/effects/chorus.json.
+// router/rtl/effect_contract.svh and slices the parameter bus onto the port
+// names chorus.sv uses. Slot numbers match effects/chorus/effect.json.
 //
 //   slot 0  rate     LFO frequency. Stored in centi-hertz: 100 = 1.00 Hz.
-//   slot 1  depth    Peak sweep either side of base_ms. Stored in 0.1 ms steps.
+//   slot 1  depth    Peak sweep either side of base_ms. Stored in 0.01 ms steps.
 //   slot 2  mix      Dry/wet balance.
 //   slot 3  base_ms  Centre delay. Stored in 0.1 ms steps.
 

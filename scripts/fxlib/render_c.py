@@ -36,8 +36,8 @@ def router_map_h(effects: Sequence[Tuple[Spec, int]]) -> str:
  *
  * Patch memory of the FPGA effect router, as seen from the ARM through an AXI
  * BRAM Controller. `base` is that controller's address from the Vivado
- * address editor (xparameters.h: XPAR_..._BASEADDR). Same API as VerilogSim's
- * sw/router_map.h; the effect ids come from effects/registry.json.
+ * address editor (xparameters.h: XPAR_..._BASEADDR). The memory map is
+ * scripts/fxlib/routermap.py; the effect ids come from effects/registry.json.
  *
  * To change patch without a glitch:
  *   1. bank = router_active_bank(base) ^ 1
