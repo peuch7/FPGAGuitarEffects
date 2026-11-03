@@ -29,7 +29,7 @@ module router_pl #(
     output logic signed [`SAMPLE_WIDTH-1:0] sample_out,
     output logic                            sample_out_valid,
 
-    (* X_INTERFACE_PARAMETER = "MASTER_TYPE BRAM_CTRL,MEM_ECC NONE,MEM_WIDTH 32,MEM_SIZE 4096,READ_LATENCY 1" *)
+    (* X_INTERFACE_PARAMETER = "MASTER_TYPE BRAM_CTRL,MEM_ECC NONE,MEM_WIDTH 32,MEM_SIZE 4096,READ_WRITE_MODE READ_WRITE,READ_LATENCY 1" *)
     (* X_INTERFACE_INFO = "xilinx.com:interface:bram:1.0 BRAM_PORTA CLK" *)
     input  logic                            bram_clk,
     (* X_INTERFACE_INFO = "xilinx.com:interface:bram:1.0 BRAM_PORTA RST" *)
