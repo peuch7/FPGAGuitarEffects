@@ -27,11 +27,11 @@
 //                -> interpolate -> wet
 //                   -> out = x*(1-mix) + wet*mix
 //
-// Timing budget. At 100 MHz and 48 kHz there are 2083 clocks per sample and
-// this sequencer uses 13 of them, so the module is busy 0.6% of the time and
-// idle the rest. It could sustain roughly 7.7 MS/s, or be time-shared across
-// ~160 channels, before throughput became a question. Latency is 13 clocks,
-// 130 ns, which is four orders of magnitude below anything a player can feel.
+// Timing budget. On the board the router runs on the 12.288 MHz codec clock:
+// 256 clocks per 48 kHz sample, shared by every effect in the chain. This
+// sequencer uses 13 of them (the router adds its own per-stage overhead; `fx.py
+// check` measures 22 in total). Latency is about 1 us, far below anything a
+// player can feel.
 //
 // That slack is why both memories are read one address per cycle: the sample
 // buffer stays a simple dual-port BRAM and the sine table infers a BRAM,
@@ -41,8 +41,8 @@
 //
 // One caveat: there is no back-pressure. sample_in_valid is only examined in
 // S_IDLE, so a sample arriving less than 13 clocks after the last one is
-// dropped rather than queued. Harmless at 2083, but a real constraint if this
-// is ever time-shared or run at a higher sample rate.
+// dropped rather than queued. Harmless at 256 clocks per sample, but a real
+// constraint if this is ever time-shared or run at a higher sample rate.
 //
 module chorus (
     input  logic                            clk,
@@ -50,7 +50,7 @@ module chorus (
     input  logic signed [23:0]              sample_in,
     input  logic                            sample_in_valid,
     input  logic [15:0]                     rate,      // LFO frequency, centi-hertz: 100 = 1.00 Hz
-    input  logic [15:0]                     depth,     // sweep either side of base, 0.1 ms steps
+    input  logic [15:0]                     depth,     // sweep either side of base, 0.01 ms steps
     input  logic [15:0]                     mix,       // Q16 dry/wet, 0 = dry only
     input  logic [15:0]                     base_ms,   // centre delay, 0.1 ms steps
 

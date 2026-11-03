@@ -3,10 +3,10 @@
 #include "fx_table.h"
 
 static const fx_knob_t knobs_overdrive[] = {
-    { "drive", 0, FX_SCALE_RAW, 1, 65535, 4, 1.0, 0.0, "x", "Gain into the tanh curve." },
-    { "tone", 1, FX_SCALE_Q16, 0, 65535, 32768, 1.0, 0.0, "", "Same one-pole tilt as distortion." },
+    { "drive", 0, FX_SCALE_RAW, 1, 65535, 1024, 0.00390625, 0.0, "x", "Gain into the tanh curve. Q8.8: 1.0 (raw 256) = unity, 8.0 (raw 2048) = 8x." },
+    { "tone", 1, FX_SCALE_Q16, 0, 65535, 32768, 1.0, 0.0, "", "Same one-pole tilt as distortion. (Not implemented in the RTL yet.)" },
     { "level", 2, FX_SCALE_Q16, 0, 65535, 32768, 1.0, 0.0, "", "Output attenuation." },
-    { "asymmetry", 3, FX_SCALE_Q16, 0, 65535, 0, 1.0, 0.0, "", "0 = symmetric; higher adds even harmonics." },
+    { "asymmetry", 3, FX_SCALE_Q16, 0, 65535, 0, 1.0, 0.0, "", "0 = symmetric; higher adds even harmonics. (Not implemented in the RTL yet.)" },
 };
 
 static const fx_knob_t knobs_distortion[] = {

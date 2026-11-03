@@ -52,26 +52,49 @@ proc fx_abs {rel} {
     return [file normalize [file join $fx_repo $rel]]
 }
 
-set fx_fs [get_filesets sources_1]
-set fx_wanted [lmap f [concat $fx_rtl $fx_headers] {fx_abs $f}]
+# Paths compared as keys: Windows file names are case-insensitive, and Vivado
+# may hand back "c:/..." for a file added as "C:/...".
+proc fx_key {path} {
+    set path [file normalize $path]
+    if {$::tcl_platform(platform) eq "windows"} {
+        set path [string tolower $path]
+    }
+    return $path
+}
 
+set fx_fs [get_filesets sources_1]
+set fx_have [dict create]
 foreach f [get_files -quiet -of_objects $fx_fs] {
-    set p [file normalize $f]
-    set rel [string range $p [expr {[string length $fx_repo] + 1}] end]
-    if {[string first "$fx_repo/" $p] == 0 && [regexp {^(effects|gen|router|rtl)/} $rel]
-            && [lsearch -exact $fx_wanted $p] < 0} {
+    dict set fx_have [fx_key $f] $f
+}
+set fx_want [dict create]
+foreach rel [concat $fx_rtl $fx_headers] {
+    dict set fx_want [fx_key [fx_abs $rel]] $rel
+}
+set fx_headers_keys [lmap rel $fx_headers {fx_key [fx_abs $rel]}]
+
+# Repo files from an earlier run that are no longer part of the build.
+set fx_root "[fx_key $fx_repo]/"
+dict for {key f} $fx_have {
+    if {[string first $fx_root $key] != 0 || [dict exists $fx_want $key]} {
+        continue
+    }
+    set rel [string range $key [string length $fx_root] end]
+    if {[regexp {^(effects|gen|router|rtl)/} $rel]} {
         puts "fx: removing $rel (no longer in the build)"
         remove_files -fileset $fx_fs $f
     }
 }
 
-foreach f $fx_wanted {
-    if {[llength [get_files -quiet -of_objects $fx_fs $f]] == 0} {
-        add_files -norecurse -fileset $fx_fs $f
+dict for {key rel} $fx_want {
+    if {![dict exists $fx_have $key]} {
+        add_files -norecurse -fileset $fx_fs [fx_abs $rel]
     }
 }
-foreach f $fx_headers {
-    set_property file_type {Verilog Header} [get_files -of_objects $fx_fs [fx_abs $f]]
+foreach f [get_files -quiet -of_objects $fx_fs] {
+    if {[lsearch -exact $fx_headers_keys [fx_key $f]] >= 0} {
+        set_property file_type {Verilog Header} $f
+    }
 }
 set_property include_dirs [lmap d $fx_include_dirs {fx_abs $d}] $fx_fs
 puts "fx: [llength $fx_rtl] RTL files, [llength $fx_headers] headers"

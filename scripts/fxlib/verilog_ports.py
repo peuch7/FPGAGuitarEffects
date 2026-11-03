@@ -20,11 +20,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
-_LINE_COMMENT = re.compile(r"//[^\n]*")
-_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
-_ATTRIBUTE = re.compile(r"\(\*.*?\*\)", re.S)
+from .textio import read_text
+
 _INCLUDE = re.compile(r'^\s*`include\s+"([^"]+)"', re.M)
-_MODULE = re.compile(r"\bmodule\s+(\w+)")
+# Declarations start a line (attributes are blanked first), so a "module" inside
+# a string or an expression is not mistaken for one.
+_MODULE = re.compile(r"^\s*(?:macro)?module\s+(\w+)", re.M)
 _DIRECTIONS = ("input", "output", "inout")
 
 
@@ -37,18 +38,46 @@ class Port:
 
 
 def strip_comments(text: str) -> str:
-    text = _BLOCK_COMMENT.sub(" ", text)
-    text = _LINE_COMMENT.sub("", text)
-    return _ATTRIBUTE.sub(" ", text)
+    """Blank out comments and (* attributes *), keeping strings and line structure.
+
+    One pass, so a "/*" inside a // comment or a "//" inside a string does not
+    swallow code, and `@(*)` is not taken for the start of an attribute.
+    """
+    out = []
+    i, n = 0, len(text)
+    while i < n:
+        if text[i] == '"':
+            j = i + 1
+            while j < n and text[j] not in '"\n':
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+        elif text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+        elif text.startswith("/*", i) or (text.startswith("(*", i) and not text.startswith("(*)", i)):
+            close = "*/" if text[i] == "/" else "*)"
+            j = text.find(close, i + 2)
+            end = n if j < 0 else j + 2
+            out.append(" " + "\n" * text.count("\n", i, end))
+            i = end
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
+def _source(path: Path) -> str:
+    return strip_comments(read_text(path, lenient=True))
 
 
 def includes(path: Path) -> List[str]:
     """Header names `include'd by a file, in order."""
-    return _INCLUDE.findall(strip_comments(Path(path).read_text()))
+    return _INCLUDE.findall(_source(path))
 
 
 def module_names(path: Path) -> List[str]:
-    return _MODULE.findall(strip_comments(Path(path).read_text()))
+    return _MODULE.findall(_source(path))
 
 
 def _matching_paren(text: str, open_at: int) -> int:
@@ -90,8 +119,8 @@ def _eval_width(rng: str) -> Optional[int]:
 
 def module_ports(path: Path, module: str) -> Dict[str, Port]:
     """Ports of `module` in `path`, by name. Raises ValueError if not found."""
-    text = strip_comments(Path(path).read_text())
-    m = re.search(rf"\bmodule\s+{re.escape(module)}\b", text)
+    text = _source(path)
+    m = re.search(rf"^\s*(?:macro)?module\s+{re.escape(module)}\b", text, re.M)
     if not m:
         raise ValueError(f"module {module} not found in {path}")
     i = m.end()
@@ -99,8 +128,13 @@ def module_ports(path: Path, module: str) -> Dict[str, Port]:
     rest = text[i:].lstrip()
     i = len(text) - len(rest)
     if rest.startswith("#"):
-        i = _matching_paren(text, text.index("(", i)) + 1
-    open_at = text.index("(", i)
+        open_at = text.find("(", i)
+        if open_at < 0:
+            raise ValueError(f"{path}: module {module} has a malformed parameter list")
+        i = _matching_paren(text, open_at) + 1
+    open_at = text.find("(", i)
+    if open_at < 0:
+        raise ValueError(f"{path}: module {module} has no port list")
     body = text[open_at + 1:_matching_paren(text, open_at)]
 
     ports: Dict[str, Port] = {}

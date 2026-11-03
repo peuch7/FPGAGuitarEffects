@@ -50,10 +50,14 @@ int cli_readline(char *buf, size_t len)
                 --n;
                 cli_printf("\b \b");
             }
-        } else if (c == 0x1B) {           /* escape sequence (arrow keys): drop it */
-            int c2 = fx_getchar();
-            if (c2 == '[')
-                (void)fx_getchar();
+        } else if (c == 0x1B) {           /* escape sequence (arrows, Delete): drop it */
+            if (fx_getchar() == '[') {
+                /* CSI: parameter bytes, then one final byte in 0x40..0x7E */
+                int c2;
+                do {
+                    c2 = fx_getchar();
+                } while (c2 >= 0x20 && c2 < 0x40);
+            }
         } else if (c >= 0x20 && c < 0x7F && n + 1 < len) {
             buf[n++] = (char)c;
             fx_putchar((char)c);
@@ -105,14 +109,26 @@ static void apply(const patch_t *p)
 
 /* -- argument helpers ----------------------------------------------------- */
 
+/* A whole-string decimal number in lo..hi, or -1. */
+static long parse_pos(const char *arg, long lo, long hi)
+{
+    char *end;
+    long v;
+    if (!*arg)
+        return -1;
+    v = strtol(arg, &end, 10);
+    return (*end == '\0' && v >= lo && v <= hi) ? v : -1;
+}
+
 /* "2" (1-based position) or an effect name already in the chain. -1 if neither. */
 static int stage_ref(const patch_t *p, const char *arg)
 {
-    char *end;
-    long pos = strtol(arg, &end, 10);
     const fx_effect_t *fx;
-    if (*arg && *end == '\0')
-        return (pos >= 1 && pos <= (long)p->n) ? (int)pos - 1 : -1;
+    long pos;
+    if (arg[0] >= '0' && arg[0] <= '9') {
+        pos = parse_pos(arg, 1, (long)p->n);
+        return pos < 0 ? -1 : (int)pos - 1;
+    }
     fx = fx_find(arg);
     return fx ? patch_index_of(p, fx) : -1;
 }
@@ -193,14 +209,14 @@ static void cmd_fx(int argc, char **argv)
     const fx_effect_t *fx = need_fx(argv[1]);
     if (!fx)
         return;
-    cli_printf("%s (id %u): %s\n", fx->name, fx->id, fx->description);
+    cli_printf("%s (id %u): %s\n", fx->name, (unsigned)fx->id, fx->description);
     for (unsigned i = 0; i < fx->n_knobs; ++i) {
         const fx_knob_t *k = &fx->knobs[i];
         knob_format(k, k->min, lo, sizeof lo);
         knob_format(k, k->max, hi, sizeof hi);
         knob_format(k, k->def, def, sizeof def);
         cli_printf("  %-14s %s..%s%s%s, default %s  (raw %u..%u)\n", k->name, lo, hi,
-                   *k->unit ? " " : "", k->unit, def, k->min, k->max);
+                   *k->unit ? " " : "", k->unit, def, (unsigned)k->min, (unsigned)k->max);
         if (*k->doc)
             cli_printf("  %-14s %s\n", "", k->doc);
     }
@@ -220,8 +236,8 @@ static void cmd_add(int argc, char **argv, int at_arg)
         return;
     }
     if (at_arg) {
-        long v = strtol(argv[1], NULL, 10);
-        if (v < 1 || v > (long)p.n + 1) {
+        long v = parse_pos(argv[1], 1, (long)p.n + 1);
+        if (v < 0) {
             cli_printf("position must be 1..%u\n", p.n + 1);
             return;
         }
@@ -286,8 +302,8 @@ static void cmd_mv(int argc, char **argv)
         cli_printf("usage: mv <from pos|fx> <to pos>\n");
         return;
     }
-    to = strtol(argv[2], NULL, 10);
-    if (to < 1 || to > (long)p.n) {
+    to = parse_pos(argv[2], 1, (long)p.n);
+    if (to < 0) {
         cli_printf("position must be 1..%u\n", p.n);
         return;
     }
@@ -321,6 +337,10 @@ static void cmd_preset(int argc, char **argv)
         memset(&p, 0, sizeof p);
         for (unsigned s = 0; s < pr->n_stages; ++s) {
             p.stage[s].fx = fx_by_id(pr->stages[s].id);
+            if (!p.stage[s].fx) {               /* tables out of step: never apply half a preset */
+                cli_printf("preset '%s' uses unknown effect id %u\n", pr->name, (unsigned)pr->stages[s].id);
+                return;
+            }
             memcpy(p.stage[s].knobs, pr->stages[s].knobs, sizeof p.stage[s].knobs);
         }
         p.n = pr->n_stages;
@@ -349,8 +369,8 @@ static void cmd_gain(int argc, char **argv, int headphone)
     char *end;
     double db;
     int rc;
-    if (argc != 2 || (db = strtod(argv[1], &end), *end != '\0')) {
-        cli_printf(headphone ? "usage: vol <dB>\n" : "usage: gain <dB>\n");
+    if (argc != 2 || (db = strtod(argv[1], &end), *end != '\0') || !(db >= -100.0 && db <= 100.0)) {
+        cli_printf(headphone ? "usage: vol <dB>, -73..+6\n" : "usage: gain <dB>, -34.5..+33\n");
         return;
     }
     rc = headphone ? codec_set_headphone_db((int)(db < 0 ? db - 0.5 : db + 0.5))
@@ -363,10 +383,15 @@ void cli_exec(char *line)
 {
     char *argv[MAX_ARGS];
     int argc = 0;
-    for (char *tok = strtok(line, " \t"); tok && argc < MAX_ARGS; tok = strtok(NULL, " \t"))
+    char *tok = strtok(line, " \t");
+    for (; tok && argc < MAX_ARGS; tok = strtok(NULL, " \t"))
         argv[argc++] = tok;
     if (argc == 0)
         return;
+    if (tok) {
+        cli_printf("too many arguments (at most %d)\n", MAX_ARGS - 1);
+        return;
+    }
 
     if (!strcmp(argv[0], "help") || !strcmp(argv[0], "?"))
         cmd_help();
@@ -401,7 +426,7 @@ void cli_exec(char *line)
 
 void cli_banner(void)
 {
-    cli_printf("\nZybo guitar effects - %u effects, %u presets. Type 'help'.\n",
+    cli_printf("Zybo guitar effects - %u effects, %u presets. Type 'help'.\n",
                fx_n_effects, fx_n_presets);
     if (patch_unknown_ids())
         cli_printf("note: the active patch has %u effect id(s) this software does not know\n",

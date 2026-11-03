@@ -49,6 +49,48 @@ PATH:
 | LINE IN (blue jack) | the guitar, through a **mono-to-dual-mono adapter** | the input is the codec's right channel; a mono plug grounds it |
 | HPH OUT (black jack) | headphones or an amp input | |
 
+### Hardware safety
+
+**Nothing in this project can brick the board:**
+- **Programming over JTAG is volatile.** The bitstream and the program live in RAM,
+  and a power cycle undoes them.
+- **Nothing writes flash, QSPI or eFuses.** No script or command here touches them.
+- **SD booting only reads the card.** Take the card out and you are back where you
+  started.
+- **JP5 on JTAG always works.** With the jumper there, the board waits for the PC
+  whatever is on the SD card.
+
+**The design itself was checked against the board:**
+- **Pins.** Every one of the 14 pins in `constraints/zybo_z7_10.xdc` (pin and 3.3 V
+  standard) matches Digilent's Zybo Z7 master XDC. Directions match your original
+  working design.
+- **No driver fights.** The codec is set to I2S **slave** mode (register R7, bit 6 =
+  0, which is also its power-on default), so the FPGA is the only device driving the
+  bit and frame clocks. The codec's data output (`ac_recdat`) is an FPGA input. I2C is
+  open-drain.
+- **PS pin voltages.** The PS's MIO voltages come from Digilent's board preset (bank
+  0 3.3 V, bank 1 1.8 V). `vivado/design_1.tcl` stops with an error if they come out
+  any different. Don't work around that error; fix the board files.
+- **Unconstrained pins.** Vivado refuses to write a bitstream with an unconstrained
+  pin or a default I/O standard (DRCs UCIO-1, NSTD-1). Never lower those DRCs to
+  warnings.
+
+**What can damage the board is wiring and power, not this code:**
+- **Power with 5 V only:** USB, or the barrel jack with a 5 V supply and JP6 on WALL.
+  A higher-voltage adapter can destroy the board.
+- **Change jumpers (JP5, JP6) and plug Pmods only with the power off.**
+- **LINE IN takes line-level signals:** a guitar, a pedal's output, a phone. **Never
+  connect an amplifier's speaker output to it.**
+- **HPH OUT drives headphones, or an amp or mixer input.** Not a passive speaker.
+- **Mind your ears and speakers.** Turn the amp or headphones down before the first
+  sound. The distortion and overdrive presets reach full scale, and `vol` can boost
+  up to +6 dB. The codec powers up in its pop-free sequence, but a fresh connection
+  can still click.
+- **Handle the board by its edges** after touching something grounded (ESD).
+
+If anything behaves unexpectedly, switch the power off: nothing is lost that
+reprogramming won't restore.
+
 Turn the power switch on. You'll see two USB devices: the JTAG programmer, and a
 serial port, which is COMx on Windows and `/dev/ttyUSB1` on Linux, typically the
 second of the pair.
@@ -150,7 +192,7 @@ Then try a few things:
 fx> status                     "audio: flowing, about 48000 samples/s" means the whole path is alive
 fx> gain 6                     more line-in gain if the guitar is quiet (-34.5..+33 dB)
 fx> preset pedalboard          overdrive -> delay -> reverb
-fx> set overdrive drive=1024   less drive (Q8.8: 256 = 1x)
+fx> set overdrive drive=4.0    less drive (4x)
 fx> add chorus                 a fourth stage
 fx> fx reverb                  what reverb's knobs mean
 fx> clear                      dry again
@@ -220,10 +262,11 @@ and the module references, so that works too.
 | symptom | likely cause and fix |
 |---|---|
 | `board files for the Zybo Z7-10 are not installed` | Install them; see section 1. Then delete `build/vivado` and run again. |
+| Stuck at `reading the router's patch memory` | The FPGA isn't programmed with this bitstream, so nothing answers on AXI. Program it first: Vitis *Run*, or `xsdb vitis/run.tcl`. |
 | `codec... NO ANSWER on I2C` | The codec I2C pins aren't reaching the codec. Check `constraints/zybo_z7_10.xdc` (`IIC_0_0_*` on N18/N17) and that PS I2C0 is on EMIO. |
 | `status` says audio is NOT flowing | LD3 off means the audio clock isn't running or the router is held in reset. Check `clk_wiz_0` locked and the `ps7_init` run, which Vitis or `run.tcl` does. |
 | Audio flows but you hear nothing | Use a dual-mono adapter (the right channel is the input). Try `gain 12` and `vol 0`, and check the cable is in LINE IN, not MIC IN. Try `clear` to rule out an effect setting. |
-| Very quiet with overdrive | `drive` is Q8.8: `drive=8` is 1/32x. Use 256 for 1x and 2048 for 8x. |
+| Very quiet with overdrive | Write `drive=8.0` for 8x. A plain integer is the raw Q8.8 field, so `drive=8` is 1/32x. |
 | LD0 on / `status` shows OVERRUN | The chain takes longer than 256 clocks per sample. Run `fx.py check`, which reports each effect's cost. |
 | LD1 on / FX TIMEOUT | An effect never raised `sample_out_valid` and was bypassed. `fx.py check` shows which one. |
 | Vivado: placement fails on block RAM | Over the Z7-10's 60 RAMB36. Remove an effect (`fx.py remove`) or shrink a delay line (e.g. `MAX_DELAY_SAMPLES` in `effects/delay/rtl/delay.sv`). |

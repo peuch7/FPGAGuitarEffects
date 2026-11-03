@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fxlib import sim  # noqa: E402
 from fxlib.layout import Layout  # noqa: E402
 from fxlib.project import FxError, Project, derive_spec  # noqa: E402
+from fxlib.registry import RegistryError  # noqa: E402
 from fxlib.spec import Spec, SpecError  # noqa: E402
 
 
@@ -89,8 +90,10 @@ def cmd_add(project: Project, args) -> int:
     if len(specs) > 1:
         raise FxError("give at most one spec")
     for p in rtl + specs:
-        if not p.exists():
+        if not p.is_file():
             raise FxError(f"{p} not found")
+    if args.module and specs:
+        raise FxError("--module is for adding from bare RTL; with a spec, set \"module\" in it")
 
     derived = False
     if specs:
@@ -133,10 +136,16 @@ def cmd_power_on(project: Project, args) -> int:
     if not (project.layout.presets / f"{args.preset}.json").exists():
         known = ", ".join(p.stem for p in project.preset_files()) or "(none)"
         raise FxError(f"no presets/{args.preset}.json; presets: {known}")
+    snapshot = project.registry.snapshot()
     project.registry.power_on = args.preset
+    try:
+        changed = project.gen()         # validates first; nothing is saved if it fails
+    except Exception:
+        project.registry.restore(snapshot)
+        raise
     project.registry.save()
     print(f"power-on preset: {args.preset} (baked into the bitstream; rebuild to apply)")
-    _report_gen(project, project.gen())
+    _report_gen(project, changed)
     return 0
 
 
@@ -206,7 +215,7 @@ def main(argv=None) -> int:
     layout = Layout(Path(args.repo_root).resolve()) if args.repo_root else Layout.default()
     try:
         return args.func(Project(layout), args)
-    except (FxError, SpecError) as exc:
+    except (FxError, SpecError, RegistryError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -15,6 +16,7 @@ from .layout import Layout
 from .registry import Registry, RegistryError
 from .spec import (CONTRACT_PORTS, CORE_PORTS, HEADER_EXTS, N_PARAMS, PARAM_WIDTH,
                    PROVIDED_HEADERS, Param, Spec, SpecError)
+from .textio import read_text, write_text
 
 CONTRACT_DIRECTIONS = {"clk": "input", "rst_n": "input", "sample_in": "input",
                        "sample_in_valid": "input", "params": "input",
@@ -26,6 +28,13 @@ class FxError(Exception):
 
 
 PresetStages = List[Tuple[str, rm.Stage]]   # [(effect name, (id, bits)), ...]
+
+
+def _ports(path: Path, module: str) -> Dict[str, vp.Port]:
+    try:
+        return vp.module_ports(path, module)
+    except ValueError as exc:
+        raise FxError(f"{exc} (fx.py reads ANSI-style port lists only)") from None
 
 
 class Project:
@@ -40,7 +49,10 @@ class Project:
         path = self.layout.spec_path(name)
         if not path.exists():
             raise FxError(f"{name} is registered but {self.layout.rel(path)} is missing")
-        return Spec.load(path)
+        try:
+            return Spec.load(path)
+        except SpecError as exc:
+            raise FxError(str(exc)) from None
 
     def effects(self) -> List[Tuple[Spec, int]]:
         """Active effects in id order."""
@@ -52,13 +64,17 @@ class Project:
     def preset(self, path: Path, specs: Dict[str, Tuple[Spec, int]]) -> Tuple[str, str, PresetStages]:
         rel = self.layout.rel(path)
         try:
-            raw = json.loads(path.read_text())
-        except json.JSONDecodeError as exc:
+            raw = json.loads(read_text(path))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise FxError(f"{rel}: {exc}") from None
+        if not isinstance(raw, dict):
+            raise FxError(f"{rel}: a preset is a JSON object")
         name = raw.get("name", path.stem)
         if name != path.stem:
             raise FxError(f"{rel}: name {name!r} must match the file name")
         stages = raw.get("stages", [])
+        if not isinstance(stages, list) or not all(isinstance(s, dict) for s in stages):
+            raise FxError(f"{rel}: stages must be a list of {{\"effect\": ..., \"params\": {{...}}}}")
         if len(stages) > rm.MAX_STAGES:
             raise FxError(f"{rel}: {len(stages)} stages; the router holds at most {rm.MAX_STAGES}")
         out: PresetStages = []
@@ -73,12 +89,14 @@ class Project:
                 raise FxError(f"{rel}: {effect} appears twice; the router has one instance of each")
             seen.add(effect)
             spec, fx_id = specs[effect]
+            if not isinstance(stage.get("params", {}), dict):
+                raise FxError(f"{rel}: stage {i}: params must be an object of knob: value")
             try:
                 bits = spec.resolve(stage.get("params", {}))
             except SpecError as exc:
                 raise FxError(f"{rel}: stage {i}: {exc}") from None
             out.append((effect, (fx_id, bits)))
-        return name, raw.get("description", ""), out
+        return name, str(raw.get("description", "")), out
 
     def presets(self) -> List[Tuple[str, str, PresetStages]]:
         specs = {spec.name: (spec, fx_id) for spec, fx_id in self.effects()}
@@ -87,7 +105,7 @@ class Project:
     # -- validation --------------------------------------------------------
 
     def _check_contract_top(self, spec: Spec, path: Path) -> None:
-        ports = vp.module_ports(path, spec.top)
+        ports = _ports(path, spec.top)
         if set(ports) != set(CONTRACT_PORTS):
             raise FxError(f"{spec.name}: {spec.top} must have exactly the contract ports "
                           f"{list(CONTRACT_PORTS)}; it has {list(ports)}")
@@ -97,7 +115,7 @@ class Project:
 
     def _core_knob_widths(self, spec: Spec, path: Path) -> Dict[str, Optional[int]]:
         """Check a core module against its spec; returns knob port widths."""
-        ports = vp.module_ports(path, spec.module)
+        ports = _ports(path, spec.module)
         mapped = {}
         for contract in CORE_PORTS:
             port = spec.core_port(contract)
@@ -143,6 +161,13 @@ class Project:
                 return path
         raise FxError(f"{spec.name}: module {module} is not defined in any of its sources")
 
+    def _check_rtl(self, spec: Spec) -> None:
+        """The spec's RTL defines what it says, with the ports it says."""
+        if spec.generates_wrapper:
+            self._core_knob_widths(spec, self._find_module(spec, spec.module))
+        else:
+            self._check_contract_top(spec, self._find_module(spec, spec.top))
+
     def validate(self) -> List[str]:
         """Check everything that feeds the generator. Raises FxError; returns warnings."""
         warnings: List[str] = []
@@ -168,6 +193,11 @@ class Project:
                 warnings += spec.validate()
             except SpecError as exc:
                 raise FxError(str(exc)) from None
+            folder = spec.path.parent.resolve()
+            outside = [s for s, p in zip(spec.sources, spec.source_paths()) if folder not in p.parents]
+            if outside:
+                raise FxError(f"{self.layout.rel(spec.path)}: sources must be inside effects/{spec.name}/ "
+                              f"(re-add the effect with fx.py add to copy them in): {outside}")
             own_headers = {p.name for p in spec.header_paths()}
             for h in own_headers:
                 if h in headers:
@@ -184,11 +214,9 @@ class Project:
                     claim_module(mod, spec.name)
             if spec.generates_wrapper:
                 claim_module(spec.top_module, f"gen/rtl/{spec.top_module}.sv")
-                self._core_knob_widths(spec, self._find_module(spec, spec.module))
-            else:
-                self._check_contract_top(spec, self._find_module(spec, spec.top))
+            self._check_rtl(spec)
 
-        if (self.layout.presets / f"{self.registry.power_on}.json").exists() is False:
+        if not (self.layout.presets / f"{self.registry.power_on}.json").exists():
             raise FxError(f"power-on preset {self.registry.power_on!r} (effects/registry.json) "
                           f"has no presets/{self.registry.power_on}.json")
         self.presets()      # raises on a bad preset
@@ -247,7 +275,7 @@ class Project:
         if L.readme.exists():
             notes = {spec.name: spec.status for spec, _ in effects if spec.status}
             table = render_lists.readme_table(effects, notes)
-            files[L.readme] = render_lists.splice_readme(L.readme.read_text(), table)
+            files[L.readme] = render_lists.splice_readme(read_text(L.readme), table)
         return files
 
     def gen(self, check_only: bool = False) -> List[str]:
@@ -260,11 +288,11 @@ class Project:
         files = self.render()
         changed = []
         for path, text in files.items():
-            if not path.exists() or path.read_text() != text:
+            if not path.exists() or read_text(path) != text:
                 changed.append(self.layout.rel(path))
                 if not check_only:
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text(text)
+                    write_text(path, text)
         # Wrappers of effects that were removed or now ship their own top.
         for path in sorted(self.layout.gen_rtl.glob("*_top.sv")):
             if path not in files:
@@ -307,57 +335,69 @@ class Project:
 
         Idempotent: running it again on effects/<name>/effect.json picks up
         edited sources and newly included headers, and keeps the effect's id.
+        All or nothing: if the effect does not check out against the rest of
+        the project (a module name already taken, say), effects/<name>/ and the
+        registry are left exactly as they were.
         """
         try:
             self.warnings = spec.validate()
         except SpecError as exc:
             raise FxError(str(exc)) from None
         files = self._gather(spec)
+        self._check_rtl(spec)       # against the files where they are, before touching anything
 
         dest = self.layout.effect_dir(spec.name)
-        rtl_dir = dest / "rtl"
         # Read first: re-adding an effect from its own folder copies onto itself.
         contents = {path.name: path.read_bytes() for path in files}
-        if rtl_dir.exists():
-            shutil.rmtree(rtl_dir)
-        rtl_dir.mkdir(parents=True)
-        for name, data in contents.items():
-            (rtl_dir / name).write_bytes(data)
-
-        normalized = Spec(
-            name=spec.name, sources=[f"rtl/{p.name}" for p in files], params=spec.params,
-            top=spec.top, module=spec.module, ports=spec.ports, description=spec.description,
-            owner=spec.owner, status=spec.status,
-            path=self.layout.spec_path(spec.name), root=dest)
-        if normalized.generates_wrapper:
-            # Fail now, before anything is registered, if the RTL does not match.
-            self._core_knob_widths(normalized, self._find_module(normalized, normalized.module))
-        else:
-            self._check_contract_top(normalized, self._find_module(normalized, normalized.top))
-        normalized.path.write_text(json.dumps(normalized.to_json(), indent=2) + "\n")
-
+        backup_root = Path(tempfile.mkdtemp(prefix="fx-add-"))
+        backup = backup_root / spec.name
+        had_dest = dest.exists()
+        if had_dest:
+            shutil.copytree(dest, backup)
+        snapshot = self.registry.snapshot()
         try:
-            fx_id = self.registry.assign(spec.name)
-        except RegistryError as exc:
-            raise FxError(str(exc)) from None
+            rtl_dir = dest / "rtl"
+            if rtl_dir.exists():
+                shutil.rmtree(rtl_dir)
+            rtl_dir.mkdir(parents=True)
+            for name, data in contents.items():
+                (rtl_dir / name).write_bytes(data)
+            normalized = Spec(
+                name=spec.name, sources=[f"rtl/{p.name}" for p in files], params=spec.params,
+                top=spec.top, module=spec.module, ports=spec.ports, description=spec.description,
+                owner=spec.owner, status=spec.status,
+                path=self.layout.spec_path(spec.name), root=dest)
+            write_text(normalized.path, json.dumps(normalized.to_json(), indent=2) + "\n")
+            try:
+                fx_id = self.registry.assign(spec.name)
+            except RegistryError as exc:
+                raise FxError(str(exc)) from None
+            self.warnings += self.validate()        # the whole project, with this effect in it
+        except BaseException:
+            self.registry.restore(snapshot)
+            shutil.rmtree(dest, ignore_errors=True)
+            if had_dest:
+                shutil.copytree(backup, dest)
+            raise
+        finally:
+            shutil.rmtree(backup_root, ignore_errors=True)
         self.registry.save()
         return fx_id
 
     def remove_effect(self, name: str, delete: bool = False) -> int:
-        try:
-            fx_id = self.registry.retire(name)
-        except RegistryError as exc:
-            raise FxError(str(exc)) from None
+        if name not in self.registry.effects:
+            raise FxError(f"{name} is not an active effect")
         users = []
-        specs_left = {spec.name for spec, _ in self.effects()}
         for path in self.preset_files():
-            stages = json.loads(path.read_text()).get("stages", [])
-            if any(s.get("effect") == name for s in stages):
+            try:
+                stages = json.loads(read_text(path)).get("stages", [])
+            except (ValueError, AttributeError):
+                continue                        # a broken preset fails validation on its own
+            if any(isinstance(s, dict) and s.get("effect") == name for s in stages):
                 users.append(self.layout.rel(path))
         if users:
-            self.registry.assign(name)   # put it back (same id): nothing changed
-            raise FxError(f"{name} is used by {users}; edit those presets first "
-                          f"(effects left: {', '.join(sorted(specs_left)) or 'none'})")
+            raise FxError(f"{name} is used by {users}; edit those presets first")
+        fx_id = self.registry.retire(name)
         self.registry.save()
         if delete:
             shutil.rmtree(self.layout.effect_dir(name), ignore_errors=True)
@@ -391,7 +431,7 @@ def derive_spec(rtl: Sequence[Path], module: Optional[str] = None, name: Optiona
         # Knob names from the wrapper's `.port (`PARAM(i))` connections.
         top, path = tops[-1]
         fx_name = name or (top[:-4] if top.endswith("_top") else top)
-        text = vp.strip_comments(path.read_text())
+        text = vp.strip_comments(read_text(path, lenient=True))
         params = [Param(name=port, index=int(i), default=0, scale="raw", doc="TODO: describe")
                   for port, i in re.findall(r"\.(\w+)\s*\(\s*`PARAM\((\d+)\)\s*\)", text)]
         return Spec(name=fx_name, sources=[str(p) for p in rtl], top=top, params=params,

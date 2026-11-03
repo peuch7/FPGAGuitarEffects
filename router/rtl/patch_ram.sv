@@ -63,8 +63,13 @@ module patch_ram #(
         end
     end
 
+    // Port B writes whole words, but in the same byte-wise form as port A: Vivado's
+    // byte-write true-dual-port template expects both ports to look alike, and a
+    // mismatch can leave it building this RAM out of registers instead.
     always @(posedge clkb) begin
-        if (web) mem[addrb] <= dinb;
+        for (int b = 0; b < 4; b++) begin
+            if (web) mem[addrb][8*b +: 8] <= dinb[8*b +: 8];
+        end
         doutb <= mem[addrb];
     end
     /* verilator lint_on MULTIDRIVEN */

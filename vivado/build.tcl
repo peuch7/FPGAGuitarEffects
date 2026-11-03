@@ -48,7 +48,7 @@ if {$fx_wns < 0} {
 }
 
 write_hw_platform -fixed -include_bit -force -file [file join $fx_repo build design_1_wrapper.xsa]
-file copy -force [glob [file join $fx_repo build vivado digital_effects.runs impl_1 *.bit]] \
+file copy -force [file join $fx_repo build vivado digital_effects.runs impl_1 design_1_wrapper.bit] \
     [file join $fx_repo build design_1_wrapper.bit]
 puts "fx: wrote build/design_1_wrapper.xsa and build/design_1_wrapper.bit"
 puts "fx: next: vitis -s vitis/create_workspace.py"

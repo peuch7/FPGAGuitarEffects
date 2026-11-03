@@ -25,6 +25,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from . import routermap as rm
 from .layout import Layout
 from .project import FxError, Project
+from .textio import read_text, write_text
 
 CLOCKS_PER_SAMPLE = 256         # 12.288 MHz MCLK / 48 kHz
 MEASURE_CPS = 4096              # roomy, so a slow effect is measured rather than overrun
@@ -75,12 +76,12 @@ def run_patch(layout: Layout, tb: Path, work: Path, tag: str, stages: Sequence[r
               cps: int, n: int) -> Dict:
     patch = work / f"{tag}.patch"
     stats = work / f"{tag}.json"
-    patch.write_text(_stores(stages))
+    write_text(patch, _stores(stages))
     res = _run([str(tb), f"+cps={cps}", f"+n={n}", f"+patch={patch}", f"+stats={stats}"],
                layout.root)
     if res.returncode != 0 or not stats.exists():
         raise FxError(f"simulation of {tag} failed:\n{res.stdout}{res.stderr}")
-    return json.loads(stats.read_text())
+    return json.loads(read_text(stats))
 
 
 def smoke(project: Project, n: int = 64, keep: Optional[Path] = None) -> Tuple[bool, List[str]]:

@@ -56,8 +56,9 @@ def slot_word_addr(bank: int, slot: int, word: int = 0) -> int:
 def bank_writes(stages: Sequence[Stage], bank: int) -> List[Tuple[int, int]]:
     """(word address, value) stores that put `stages` into `bank`, END included.
 
-    The same stores, in the same order, as the ARM's router_write_slot() and
-    router_write_end() in gen/sw/router_map.h.
+    The same stores as the ARM's router_write_slot() and router_write_end() in
+    gen/sw/router_map.h (which writes each slot's id word last; the order only
+    matters for the active bank, which neither ever writes).
     """
     if len(stages) > MAX_STAGES:
         raise ValueError(f"{len(stages)} stages, router holds at most {MAX_STAGES}")

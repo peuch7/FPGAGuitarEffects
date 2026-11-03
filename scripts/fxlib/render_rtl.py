@@ -10,28 +10,30 @@ from .spec import Spec
 Stage = rm.Stage
 
 
+# Per-effect signal names are <name>_knobs/_out/_out_valid/_selected: none of
+# them can equal a port of the bank (fx_sel, fx_params, ...), whatever the name.
 def _bank_instance(spec: Spec, fx_id: int) -> str:
     n = spec.name
     return f"""\
     // ---- {n} (id {fx_id}) ----------------------------------------------
-    logic [`PARAM_BUS_WIDTH-1:0]     {n}_params;
+    logic [`PARAM_BUS_WIDTH-1:0]     {n}_knobs;
     logic signed [`SAMPLE_WIDTH-1:0] {n}_out;
     logic                            {n}_out_valid;
-    wire                             {n}_sel = (fx_sel == `FX_{n.upper()});
+    wire                             {n}_selected = (fx_sel == `FX_{n.upper()});
 
     always_ff @(posedge clk) begin
         if (!rst_n)
-            {n}_params <= '0;
-        else if (fx_params_load && {n}_sel)
-            {n}_params <= fx_params;
+            {n}_knobs <= '0;
+        else if (fx_params_load && {n}_selected)
+            {n}_knobs <= fx_params;
     end
 
     {spec.top_module} u_{n} (
         .clk              (clk),
         .rst_n            (rst_n),
         .sample_in        (fx_sample),
-        .sample_in_valid  (fx_valid && {n}_sel),
-        .params           ({n}_params),
+        .sample_in_valid  (fx_valid && {n}_selected),
+        .params           ({n}_knobs),
         .sample_out       ({n}_out),
         .sample_out_valid ({n}_out_valid)
     );

@@ -107,6 +107,9 @@ patch_result_t patch_apply(const patch_t *p)
     for (unsigned i = 0; i < p->n; ++i)
         router_write_slot(g_base, bank, i, p->stage[i].fx->id, p->stage[i].knobs);
     router_write_end(g_base, bank, p->n);
+    /* The whole bank must land before CTRL points the router at it. The PL
+     * region is strongly ordered on the Zynq, so this is belt and braces. */
+    __sync_synchronize();
     router_select_bank(g_base, bank);
     ok = wait_for_bank(bank);
 

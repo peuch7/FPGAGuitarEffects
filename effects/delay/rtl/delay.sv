@@ -73,7 +73,10 @@ module delay (
             //store current sample in bram and also in a register for our combinational output
             sample_buf[cur_addr] <= to_be_stored_unscaled >>> 16;
             cur_sample <= sample_in;
-            cur_addr <= (cur_addr == max_addr) ? 0 : cur_addr + 'd1;
+            // >=, not ==: when delay_samples shrinks while running, the pointer
+            // may already be past the new end, and must wrap now rather than
+            // walk on past the end of the buffer.
+            cur_addr <= (cur_addr >= max_addr) ? 0 : cur_addr + 'd1;
         end
         
         sample_out_valid <= sample_out_unscaled_valid;

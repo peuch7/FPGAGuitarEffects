@@ -110,13 +110,21 @@ def main() -> int:
 
     # 4. At boot the CLI shows whatever the BRAM holds (the bitstream's power-on patch).
     out, _ = run(cli, work, ["show"], init=power_on_image("pedalboard"))
-    check("1. overdrive" in out and "drive=2048" in out and "3. reverb" in out,
+    check("1. overdrive" in out and "drive=8.000" in out and "3. reverb" in out,
           "boot reads back the power-on patch")
 
     # 5. No audio clock: a warning, not a hang.
     out, mem = run(cli, work, ["add delay"], env={"FX_NO_AUDIO": "1"})
     check("has not picked up" in out and active_chain_ok(mem, [stage("delay")]),
           "no audio: warns and still writes the patch")
+
+    # 5b. Malformed positions and argument lists are refused, not half-read.
+    out, mem = run(cli, work, ["clear", "add delay", "add reverb", "mv 1x 2", "insert 1x chorus",
+                               "rm 0", "set 3 mix=0.1", "gain 1e300", "vol abc",
+                               "set delay " + " ".join(["mix=0.2"] * 25)])
+    check(active_chain_ok(mem, [stage("delay"), stage("reverb")]), "malformed arguments change nothing")
+    check(out.count("position must be") == 1 and "usage: mv" in out and "usage: gain" in out
+          and "usage: vol" in out and "too many arguments" in out, "malformed arguments are reported")
 
     # 6. The full chain fits; an 8th stage would not (only 6 effects exist, all once).
     out, mem = run(cli, work, ["clear"] + [f"add {n}" for n in SPECS])
@@ -128,7 +136,11 @@ def main() -> int:
     for name, (spec, _) in SPECS.items():
         for p in spec.params:
             texts = [str(p.lo), str(p.hi), str(p.hi + 1), "0.5", "50%", "1.0", "0.0", "-0.1",
-                     "12.5%", "0x10", "1e-3"]
+                     "12.5%", "0x10", "1e-3",
+                     # the grammar's edges: C and Python must refuse the same things
+                     "0b101", "1_000", "0X1E", "0x1.8p1", "1e999", "-1e999", "+5", "-0x10", "nan",
+                     "inf", ".5", "5.", "1.5e", "e5", "50%%", "%", "0x", "+", "1e+2", "010",
+                     "99999999999999999999", "0xFFFFFFFFFFFF"]
             for _ in range(40):
                 v = rng.uniform(-0.1, 1.1) * (p.natural(p.hi) - p.natural(p.lo)) + p.natural(p.lo)
                 texts.append(f"{v:.{rng.randint(1, 6)}f}")

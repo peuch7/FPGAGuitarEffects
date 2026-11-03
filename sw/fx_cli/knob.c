@@ -3,6 +3,7 @@
 #include "knob.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,11 +33,61 @@ const fx_knob_t *knob_find(const fx_effect_t *fx, const char *name)
     return NULL;
 }
 
-static int parse_double(const char *text, double *out)
+/* The value grammar, the same as scripts/fxlib/spec.py so C and Python never
+ * disagree about what a string means:
+ *   natural:  [+-]? (digits [. digits?] | . digits) ([eE] [+-]? digits)?  [%]
+ *   raw:      [+-]? digits   or   0x hexdigits
+ * strtod/strtol alone accept more (hex floats, inf, nan, leading spaces). */
+static int all_digits(const char *s, const char **end, int hex)
 {
-    char *end;
-    *out = strtod(text, &end);
-    return end != text && *end == '\0';
+    const char *p = s;
+    while (hex ? isxdigit((unsigned char)*p) : isdigit((unsigned char)*p))
+        ++p;
+    *end = p;
+    return p != s;
+}
+
+static int is_natural_text(const char *s)
+{
+    const char *p = s, *q;
+    int mantissa = 0;
+    if (*p == '+' || *p == '-')
+        ++p;
+    if (all_digits(p, &q, 0)) {
+        mantissa = 1;
+        p = q;
+    }
+    if (*p == '.') {
+        ++p;
+        if (all_digits(p, &q, 0)) {
+            mantissa = 1;
+            p = q;
+        }
+    }
+    if (!mantissa)
+        return 0;
+    if (*p == 'e' || *p == 'E') {
+        ++p;
+        if (*p == '+' || *p == '-')
+            ++p;
+        if (!all_digits(p, &q, 0))
+            return 0;
+        p = q;
+    }
+    return *p == '\0';
+}
+
+static int is_raw_text(const char *s, int *base)
+{
+    const char *p = s, *q;
+    if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+        *base = 16;
+        return all_digits(p + 2, &q, 1) && *q == '\0';
+    }
+    *base = 10;
+    if (*p == '+' || *p == '-')
+        ++p;
+    return all_digits(p, &q, 0) && *q == '\0';
 }
 
 int knob_parse(const fx_knob_t *k, const char *text, uint16_t *bits, const char **err)
@@ -45,6 +96,7 @@ int knob_parse(const fx_knob_t *k, const char *text, uint16_t *bits, const char 
     size_t n = strlen(text);
     double v;
     long raw;
+    int base;
 
     if (n == 0 || n >= sizeof buf) {
         *err = "expected a number";
@@ -56,10 +108,11 @@ int knob_parse(const fx_knob_t *k, const char *text, uint16_t *bits, const char 
         int percent = buf[n - 1] == '%';
         if (percent)
             buf[n - 1] = '\0';
-        if (!parse_double(buf, &v)) {
+        if (!is_natural_text(buf)) {
             *err = "expected a number";
             return -1;
         }
+        v = strtod(buf, NULL);
         if (percent)
             v /= 100.0;
         v = (v - k->offset) / k->factor;
@@ -67,23 +120,27 @@ int knob_parse(const fx_knob_t *k, const char *text, uint16_t *bits, const char 
             v *= (double)FX_KNOB_MAX;
         /* rint() rounds half to even in the default mode: Python's round(). */
         v = rint(v);
-        if (v < -1e9 || v > 1e9) {
+        if (!(v >= -1e9 && v <= 1e9)) {        /* also catches inf and nan */
             *err = "out of range";
             return -1;
         }
         raw = (long)v;
     } else {
-        char *end;
-        int base = (buf[0] == '0' && (buf[1] == 'x' || buf[1] == 'X')) ? 16 : 10;
-        raw = strtol(buf, &end, base);
-        if (end == buf || *end != '\0') {
+        if (!is_raw_text(buf, &base)) {
             *err = "expected a number";
             return -1;
         }
+        errno = 0;
+        raw = strtol(buf, NULL, base);
+        if (errno == ERANGE) {
+            *err = "out of range";
+            return -1;
+        }
     }
-    if (raw < k->min || raw > k->max) {
+    if (raw < (long)k->min || raw > (long)k->max) {
         static char msg[64];
-        snprintf(msg, sizeof msg, "raw value %ld is outside %u..%u", raw, k->min, k->max);
+        snprintf(msg, sizeof msg, "raw value %ld is outside %u..%u", raw,
+                 (unsigned)k->min, (unsigned)k->max);
         *err = msg;
         return -1;
     }
@@ -99,14 +156,21 @@ double knob_natural(const fx_knob_t *k, uint16_t bits)
 
 void fmt_fixed(char *buf, size_t len, double v, int decimals)
 {
-    long long scale = 1, q;
+    /* Integer formatting only: no %f, and no %lld (newlib-nano lacks both). */
+    long scale = 1, q;
+    double scaled;
     for (int i = 0; i < decimals; ++i)
         scale *= 10;
-    q = llrint(fabs(v) * (double)scale);
+    scaled = fabs(v) * (double)scale;
+    if (!(scaled < 2e9)) {                    /* too big for a long, or nan */
+        snprintf(buf, len, "%s", v < 0 ? "-big" : "big");
+        return;
+    }
+    q = lrint(scaled);
     if (decimals == 0)
-        snprintf(buf, len, "%s%lld", v < 0 && q ? "-" : "", q);
+        snprintf(buf, len, "%s%ld", v < 0 && q ? "-" : "", q);
     else
-        snprintf(buf, len, "%s%lld.%0*lld", v < 0 && q ? "-" : "", q / scale, decimals, q % scale);
+        snprintf(buf, len, "%s%ld.%0*ld", v < 0 && q ? "-" : "", q / scale, decimals, q % scale);
 }
 
 void knob_format(const fx_knob_t *k, uint16_t bits, char *buf, size_t len)

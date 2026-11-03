@@ -32,139 +32,139 @@ module effect_bank (
 );
 
     // ---- overdrive (id 1) ----------------------------------------------
-    logic [`PARAM_BUS_WIDTH-1:0]     overdrive_params;
+    logic [`PARAM_BUS_WIDTH-1:0]     overdrive_knobs;
     logic signed [`SAMPLE_WIDTH-1:0] overdrive_out;
     logic                            overdrive_out_valid;
-    wire                             overdrive_sel = (fx_sel == `FX_OVERDRIVE);
+    wire                             overdrive_selected = (fx_sel == `FX_OVERDRIVE);
 
     always_ff @(posedge clk) begin
         if (!rst_n)
-            overdrive_params <= '0;
-        else if (fx_params_load && overdrive_sel)
-            overdrive_params <= fx_params;
+            overdrive_knobs <= '0;
+        else if (fx_params_load && overdrive_selected)
+            overdrive_knobs <= fx_params;
     end
 
     overdrive_top u_overdrive (
         .clk              (clk),
         .rst_n            (rst_n),
         .sample_in        (fx_sample),
-        .sample_in_valid  (fx_valid && overdrive_sel),
-        .params           (overdrive_params),
+        .sample_in_valid  (fx_valid && overdrive_selected),
+        .params           (overdrive_knobs),
         .sample_out       (overdrive_out),
         .sample_out_valid (overdrive_out_valid)
     );
 
     // ---- distortion (id 2) ----------------------------------------------
-    logic [`PARAM_BUS_WIDTH-1:0]     distortion_params;
+    logic [`PARAM_BUS_WIDTH-1:0]     distortion_knobs;
     logic signed [`SAMPLE_WIDTH-1:0] distortion_out;
     logic                            distortion_out_valid;
-    wire                             distortion_sel = (fx_sel == `FX_DISTORTION);
+    wire                             distortion_selected = (fx_sel == `FX_DISTORTION);
 
     always_ff @(posedge clk) begin
         if (!rst_n)
-            distortion_params <= '0;
-        else if (fx_params_load && distortion_sel)
-            distortion_params <= fx_params;
+            distortion_knobs <= '0;
+        else if (fx_params_load && distortion_selected)
+            distortion_knobs <= fx_params;
     end
 
     distortion_top u_distortion (
         .clk              (clk),
         .rst_n            (rst_n),
         .sample_in        (fx_sample),
-        .sample_in_valid  (fx_valid && distortion_sel),
-        .params           (distortion_params),
+        .sample_in_valid  (fx_valid && distortion_selected),
+        .params           (distortion_knobs),
         .sample_out       (distortion_out),
         .sample_out_valid (distortion_out_valid)
     );
 
     // ---- delay (id 3) ----------------------------------------------
-    logic [`PARAM_BUS_WIDTH-1:0]     delay_params;
+    logic [`PARAM_BUS_WIDTH-1:0]     delay_knobs;
     logic signed [`SAMPLE_WIDTH-1:0] delay_out;
     logic                            delay_out_valid;
-    wire                             delay_sel = (fx_sel == `FX_DELAY);
+    wire                             delay_selected = (fx_sel == `FX_DELAY);
 
     always_ff @(posedge clk) begin
         if (!rst_n)
-            delay_params <= '0;
-        else if (fx_params_load && delay_sel)
-            delay_params <= fx_params;
+            delay_knobs <= '0;
+        else if (fx_params_load && delay_selected)
+            delay_knobs <= fx_params;
     end
 
     delay_top u_delay (
         .clk              (clk),
         .rst_n            (rst_n),
         .sample_in        (fx_sample),
-        .sample_in_valid  (fx_valid && delay_sel),
-        .params           (delay_params),
+        .sample_in_valid  (fx_valid && delay_selected),
+        .params           (delay_knobs),
         .sample_out       (delay_out),
         .sample_out_valid (delay_out_valid)
     );
 
     // ---- echo (id 4) ----------------------------------------------
-    logic [`PARAM_BUS_WIDTH-1:0]     echo_params;
+    logic [`PARAM_BUS_WIDTH-1:0]     echo_knobs;
     logic signed [`SAMPLE_WIDTH-1:0] echo_out;
     logic                            echo_out_valid;
-    wire                             echo_sel = (fx_sel == `FX_ECHO);
+    wire                             echo_selected = (fx_sel == `FX_ECHO);
 
     always_ff @(posedge clk) begin
         if (!rst_n)
-            echo_params <= '0;
-        else if (fx_params_load && echo_sel)
-            echo_params <= fx_params;
+            echo_knobs <= '0;
+        else if (fx_params_load && echo_selected)
+            echo_knobs <= fx_params;
     end
 
     echo_top u_echo (
         .clk              (clk),
         .rst_n            (rst_n),
         .sample_in        (fx_sample),
-        .sample_in_valid  (fx_valid && echo_sel),
-        .params           (echo_params),
+        .sample_in_valid  (fx_valid && echo_selected),
+        .params           (echo_knobs),
         .sample_out       (echo_out),
         .sample_out_valid (echo_out_valid)
     );
 
     // ---- chorus (id 5) ----------------------------------------------
-    logic [`PARAM_BUS_WIDTH-1:0]     chorus_params;
+    logic [`PARAM_BUS_WIDTH-1:0]     chorus_knobs;
     logic signed [`SAMPLE_WIDTH-1:0] chorus_out;
     logic                            chorus_out_valid;
-    wire                             chorus_sel = (fx_sel == `FX_CHORUS);
+    wire                             chorus_selected = (fx_sel == `FX_CHORUS);
 
     always_ff @(posedge clk) begin
         if (!rst_n)
-            chorus_params <= '0;
-        else if (fx_params_load && chorus_sel)
-            chorus_params <= fx_params;
+            chorus_knobs <= '0;
+        else if (fx_params_load && chorus_selected)
+            chorus_knobs <= fx_params;
     end
 
     chorus_top u_chorus (
         .clk              (clk),
         .rst_n            (rst_n),
         .sample_in        (fx_sample),
-        .sample_in_valid  (fx_valid && chorus_sel),
-        .params           (chorus_params),
+        .sample_in_valid  (fx_valid && chorus_selected),
+        .params           (chorus_knobs),
         .sample_out       (chorus_out),
         .sample_out_valid (chorus_out_valid)
     );
 
     // ---- reverb (id 6) ----------------------------------------------
-    logic [`PARAM_BUS_WIDTH-1:0]     reverb_params;
+    logic [`PARAM_BUS_WIDTH-1:0]     reverb_knobs;
     logic signed [`SAMPLE_WIDTH-1:0] reverb_out;
     logic                            reverb_out_valid;
-    wire                             reverb_sel = (fx_sel == `FX_REVERB);
+    wire                             reverb_selected = (fx_sel == `FX_REVERB);
 
     always_ff @(posedge clk) begin
         if (!rst_n)
-            reverb_params <= '0;
-        else if (fx_params_load && reverb_sel)
-            reverb_params <= fx_params;
+            reverb_knobs <= '0;
+        else if (fx_params_load && reverb_selected)
+            reverb_knobs <= fx_params;
     end
 
     reverb_top u_reverb (
         .clk              (clk),
         .rst_n            (rst_n),
         .sample_in        (fx_sample),
-        .sample_in_valid  (fx_valid && reverb_sel),
-        .params           (reverb_params),
+        .sample_in_valid  (fx_valid && reverb_selected),
+        .params           (reverb_knobs),
         .sample_out       (reverb_out),
         .sample_out_valid (reverb_out_valid)
     );

@@ -31,13 +31,19 @@
 
 static XIicPs g_iic;
 
+#define I2C_IDLE_WAIT_US 10000         /* a 2-byte write takes ~0.3 ms at 100 kHz */
+
 static int codec_write_reg(u8 reg, u16 data)
 {
     /* [7-bit register | data bit 8] [data bits 7:0] */
     u8 buf[2] = { (u8)((reg << 1) | ((data >> 8) & 0x01)), (u8)(data & 0xFF) };
     int rc = XIicPs_MasterSendPolled(&g_iic, buf, 2, CODEC_ADDR);
-    while (XIicPs_BusIsBusy(&g_iic))
-        ;
+    /* Bounded: a stuck bus (pins not reaching the codec) must not hang the app. */
+    for (unsigned t = 0; XIicPs_BusIsBusy(&g_iic); t += 10) {
+        if (t >= I2C_IDLE_WAIT_US)
+            return -1;
+        usleep(10);
+    }
     return rc == XST_SUCCESS ? 0 : -1;
 }
 
@@ -55,18 +61,25 @@ int codec_init(void)
         return -1;
     XIicPs_SetSClk(&g_iic, I2C_SCLK_HZ);
 
+    /* The datasheet's pop-free power-up: everything but the output stage first,
+     * configure, let VMID settle, activate, and only then power the output.
+     * The final state is the same as powering everything at once (R6 = 0). */
     rc |= codec_write_reg(R_RESET, 0x000);
     usleep(1000);
-    rc |= codec_write_reg(R_POWER, 0x000);          /* everything on */
+    rc |= codec_write_reg(R_POWER, 0x010);          /* all on except OUT (bit 4) */
     rc |= codec_write_reg(R_LEFT_LINE_IN, LINE_IN_0DB);
     rc |= codec_write_reg(R_RIGHT_LINE_IN, LINE_IN_0DB);
     rc |= codec_write_reg(R_LEFT_HP, HP_0DB);
     rc |= codec_write_reg(R_RIGHT_HP, HP_0DB);
     rc |= codec_write_reg(R_ANALOG_PATH, 0x012);    /* DAC to output, line in to ADC, mic muted */
     rc |= codec_write_reg(R_DIGITAL_PATH, 0x000);   /* DAC unmuted, ADC high-pass on */
+    /* Bit 6 (MS) = 0: the codec is the I2S SLAVE. The FPGA drives BCLK and both
+     * LRCLKs; master mode would make the codec drive them too. */
     rc |= codec_write_reg(R_DIGITAL_IF, 0x009);     /* slave, 24-bit, left-justified */
     rc |= codec_write_reg(R_SAMPLE_RATE, 0x000);    /* 48 kHz, 256 fs */
+    usleep(100000);                                 /* VMID settles */
     rc |= codec_write_reg(R_ACTIVE, 0x001);
+    rc |= codec_write_reg(R_POWER, 0x000);          /* now the output stage */
     return rc;
 }
 

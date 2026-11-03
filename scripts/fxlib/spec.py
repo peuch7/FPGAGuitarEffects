@@ -10,19 +10,26 @@
                                     carrying that knob (default: its name)
 
 Knob values follow one set of rules, so `0.5` means the same thing in a spec, a
-preset and on the CLI:
+preset and on the CLI (sw/fx_cli/knob.c implements the same grammar in C):
 
-    0.5 / 50%     natural units: scaled by `scale` (q16: x 65535) after factor/offset
-    32768         a plain integer is the raw 16-bit value
+    0.5  50%  1e-3   natural units: (value - offset) / factor, then x 65535 for a
+                     q16 knob, rounded half to even
+    32768  0x8000    a plain decimal or hex integer is the raw 16-bit value
+
+Anything else (underscores, 0b/0o prefixes, hex floats, inf/nan) is refused,
+here and in C, so the two can never disagree about what a value means.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Union
+
+from .textio import read_text
 
 PARAM_WIDTH = 16
 PARAM_MAX = (1 << PARAM_WIDTH) - 1
@@ -39,6 +46,19 @@ PROVIDED_HEADERS = ("effect_contract.svh", "router_patch.svh")
 
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 HEADER_EXTS = (".svh", ".vh")
+RTL_EXTS = (".sv", ".v")
+
+# The value grammar. [0-9] rather than \d, which also matches non-ASCII digits.
+_DEC_RE = re.compile(r"[+-]?[0-9]+\Z")
+_HEX_RE = re.compile(r"0[xX][0-9a-fA-F]+\Z")
+_FLOAT_RE = re.compile(r"[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?\Z")
+
+_NUMBER = (int, float)
+_PARAM_TYPES = {
+    "name": (str,), "index": (int,), "default": (int, float, str), "scale": (str,),
+    "min": (int, type(None)), "max": (int, type(None)), "unit": (str,), "doc": (str,),
+    "factor": _NUMBER, "offset": _NUMBER, "port": (str, type(None)),
+}
 
 # Every key a spec may have; anything else is a typo and is refused.
 _KNOWN = {"name", "description", "owner", "status", "top", "module", "ports", "sources", "params"}
@@ -66,12 +86,20 @@ class Param:
 
     @classmethod
     def from_json(cls, raw: dict, where: str) -> "Param":
-        known = set(cls.__dataclass_fields__)
-        unknown = set(raw) - known
+        if not isinstance(raw, dict):
+            raise SpecError(f"{where}: each param must be an object, got {raw!r}")
+        unknown = set(raw) - set(_PARAM_TYPES)
         if unknown:
             raise SpecError(f"{where}: param {raw.get('name')!r} has unknown keys {sorted(unknown)}")
         if "name" not in raw or "index" not in raw:
             raise SpecError(f"{where}: every param needs a name and an index")
+        for key, value in raw.items():
+            types = _PARAM_TYPES[key]
+            if isinstance(value, bool) or not isinstance(value, types):
+                want = " or ".join("null" if t is type(None) else t.__name__ for t in types)
+                raise SpecError(f"{where}: param {raw.get('name')!r}: {key} must be {want}, got {value!r}")
+            if isinstance(value, float) and not math.isfinite(value):
+                raise SpecError(f"{where}: param {raw.get('name')!r}: {key} must be finite")
         return cls(**raw)
 
     def to_json(self) -> dict:
@@ -112,27 +140,33 @@ class Param:
         return raw
 
     def _normalise(self, value: Value) -> int:
-        if isinstance(value, bool):
+        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
             raise SpecError(f"{self.name}: {value!r} is not a number")
-        if isinstance(value, str):
-            text = value.strip()
-            try:
-                if text.endswith("%"):
-                    return self._scaled(float(text[:-1]) / 100.0)
-                if "." in text or "e" in text.lower():
-                    return self._scaled(float(text))
-                return int(text, 0)
-            except ValueError:
-                raise SpecError(f"{self.name}: cannot read {value!r} as a number") from None
         if isinstance(value, float):
-            return self._scaled(value)
-        return int(value)
+            return self._scaled(value, value)
+        if isinstance(value, int):
+            return value
+        text = value.strip()
+        percent = text.endswith("%")
+        body = text[:-1] if percent else text
+        # Natural units: a %, a decimal point or an exponent. Otherwise raw.
+        if percent or "." in body or "e" in body.lower():
+            if not _FLOAT_RE.match(body):
+                raise SpecError(f"{self.name}: cannot read {value!r} as a number")
+            return self._scaled(float(body) / (100.0 if percent else 1.0), value)
+        if _HEX_RE.match(body):
+            return int(body, 16)
+        if _DEC_RE.match(body):
+            return int(body)
+        raise SpecError(f"{self.name}: cannot read {value!r} as a number")
 
-    def _scaled(self, value: float) -> int:
+    def _scaled(self, value: float, original: Value) -> int:
         v = (value - self.offset) / self.factor
         if self.scale == "q16":
-            return int(round(v * PARAM_MAX))
-        return int(round(v))
+            v *= PARAM_MAX
+        if not math.isfinite(v):
+            raise SpecError(f"{self.name}: {original!r} is out of range")
+        return int(round(v))     # half to even, as rint() in knob.c
 
     def natural(self, bits: int) -> float:
         value = bits / PARAM_MAX if self.scale == "q16" else bits
@@ -164,20 +198,32 @@ class Spec:
     def load(cls, path: Path, root: Optional[Path] = None) -> "Spec":
         path = Path(path)
         try:
-            raw = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
+            raw = json.loads(read_text(path))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise SpecError(f"{path}: {exc}") from None
         return cls.from_json(raw, path, root or path.parent)
 
     @classmethod
     def from_json(cls, raw: dict, path: Path, root: Path) -> "Spec":
         where = str(path)
+        if not isinstance(raw, dict):
+            raise SpecError(f"{where}: a spec is a JSON object")
         for key in ("name", "sources"):
             if key not in raw:
                 raise SpecError(f"{where}: missing required key {key!r}")
         unknown = sorted(set(raw) - _KNOWN)
         if unknown:
             raise SpecError(f"{where}: unknown keys {unknown}; a spec may have {sorted(_KNOWN)}")
+        for key in ("name", "description", "owner", "status", "top", "module"):
+            if key in raw and not isinstance(raw[key], (str, type(None))):
+                raise SpecError(f"{where}: {key} must be a string")
+        if not isinstance(raw["sources"], list) or not all(isinstance(s, str) for s in raw["sources"]):
+            raise SpecError(f"{where}: sources must be a list of file names")
+        if not isinstance(raw.get("params", []), list):
+            raise SpecError(f"{where}: params must be a list")
+        ports = raw.get("ports", {})
+        if not isinstance(ports, dict) or not all(isinstance(v, (str, type(None))) for v in ports.values()):
+            raise SpecError(f"{where}: ports must map contract port names to strings (or null)")
         if not raw.get("top") and not raw.get("module"):
             raise SpecError(f"{where}: give either \"top\" (a contract wrapper among the sources) "
                             f"or \"module\" (the core module, so fx.py generates the wrapper)")
@@ -188,9 +234,9 @@ class Spec:
             top=raw.get("top") or None,
             module=raw.get("module") or None,
             ports=dict(raw.get("ports", {})),
-            description=raw.get("description", ""),
-            owner=raw.get("owner", ""),
-            status=raw.get("status", ""),
+            description=raw.get("description") or "",
+            owner=raw.get("owner") or "",
+            status=raw.get("status") or "",
             path=Path(path),
             root=Path(root),
         )
@@ -299,7 +345,10 @@ class Spec:
         if self.ports and not self.generates_wrapper:
             raise SpecError(f"{where}: \"ports\" only applies with \"module\" (a generated wrapper)")
 
-        missing = [s for s, p in zip(self.sources, self.source_paths()) if not p.exists()]
+        odd = [s for s in self.sources if Path(s).suffix not in RTL_EXTS + HEADER_EXTS]
+        if odd:
+            raise SpecError(f"{where}: sources must be {', '.join(RTL_EXTS + HEADER_EXTS)} files; got {odd}")
+        missing = [s for s, p in zip(self.sources, self.source_paths()) if not p.is_file()]
         if missing:
             raise SpecError(f"{where}: source files not found (relative to {self.root}): {missing}")
         if not self.rtl_paths():

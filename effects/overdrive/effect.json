@@ -11,19 +11,20 @@
     {
       "name": "drive",
       "index": 0,
-      "default": 4,
+      "default": 4.0,
       "scale": "raw",
       "min": 1,
       "max": 65535,
       "unit": "x",
-      "doc": "Gain into the tanh curve."
+      "doc": "Gain into the tanh curve. Q8.8: 1.0 (raw 256) = unity, 8.0 (raw 2048) = 8x.",
+      "factor": 0.00390625
     },
     {
       "name": "tone",
       "index": 1,
       "default": 0.5,
       "scale": "q16",
-      "doc": "Same one-pole tilt as distortion."
+      "doc": "Same one-pole tilt as distortion. (Not implemented in the RTL yet.)"
     },
     {
       "name": "level",
@@ -37,8 +38,8 @@
       "index": 3,
       "default": 0.0,
       "scale": "q16",
-      "doc": "0 = symmetric; higher adds even harmonics."
+      "doc": "0 = symmetric; higher adds even harmonics. (Not implemented in the RTL yet.)"
     }
   ],
-  "status": "drive is Q8.8 in the RTL (256 = 1x), not a plain gain: use ~2048 for 8x"
+  "status": "tone and asymmetry are not implemented in the RTL yet"
 }

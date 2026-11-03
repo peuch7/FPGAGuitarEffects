@@ -71,7 +71,7 @@ ordinary source: edit it in place.
 
 | id | effect | knobs | what it does |
 |---:|---|---|---|
-| 1 | overdrive | `drive`, `tone`, `level`, `asymmetry` | soft-clipping (tanh) overdrive **drive is Q8.8 in the RTL (256 = 1x), not a plain gain: use ~2048 for 8x** |
+| 1 | overdrive | `drive`, `tone`, `level`, `asymmetry` | soft-clipping (tanh) overdrive **tone and asymmetry are not implemented in the RTL yet** |
 | 2 | distortion | `drive`, `tone`, `level` | hard-clipping distortion with a tone control |
 | 3 | delay | `delay_samples`, `feedback`, `mix` | Fixed delay line with feedback and a dry/wet mix. |
 | 4 | echo | `delay_samples`, `decay`, `taps`, `mix` | a fixed number of discrete decaying repeats (feed-forward taps) **stub: passes audio through unchanged (echo.sv is still a TODO)** |
@@ -122,6 +122,7 @@ The board LEDs show the router's state:
 make -C sim            # everything below
 make -C sim check      # specs, gen/ freshness, Verilator lint, each effect through the router, cycle budget
 make -C sim audio      # pin to pin: codec model -> i2s_rx -> router -> i2s_tx -> codec model
+make -C sim delay      # regression: shortening the delay while it runs
 make -C sim cli        # the CLI firmware on the host against a fake patch memory
 make -C sim gen-tests  # unit tests of fx.py, including adding effects end to end (needs pytest)
 ```
@@ -133,12 +134,13 @@ to build for the board.
 
 - **echo** is a passthrough stub (`effects/echo/rtl/echo.sv`). It routes correctly but
   does nothing yet.
-- **The overdrive `drive` knob** is Q8.8 in the RTL (256 = 1x), but its spec describes
-  it as a plain gain, so `drive=8` means 1/32x, about 30 dB quieter. Use about 2048
-  for 8x, as the `pedalboard` preset does. Giving the knob a `factor` of 1/256 in
-  `effects/overdrive/effect.json` would make `drive=8.0` mean 8x (a plain integer
-  always means the raw value). Overdrive's `tone` and `asymmetry` knobs aren't
-  implemented in the RTL yet.
+- **Overdrive:** `tone` and `asymmetry` are accepted but not implemented in the RTL
+  yet. `drive` is a gain: `drive=8.0` is 8x. A plain integer is always the raw field
+  (Q8.8, so `drive=8` is 1/32x).
+- **Leftover audio:** an effect's state freezes while it is out of the chain. A delay
+  removed and added back later first plays what was in its buffer then. Set its
+  `mix` to 0 for a moment, or wait out the delay.
+- **Sticky flags:** overrun and timeout stay latched until the next FPGA reset.
 - **Block RAM budget:** the 1 s delay line takes most of the Z7-10's 60 RAMB36. The
   six effects are estimated at about 50, so a second long delay line won't fit.
   `fx.py check` can't measure BRAM; `vivado/build.tcl` prints the real figure.

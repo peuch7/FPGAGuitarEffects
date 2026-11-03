@@ -51,6 +51,10 @@ python3 scripts/fx.py add effects/tremolo/effect.json
 python3 scripts/fx.py check
 ```
 
+`add` is all or nothing. If the effect clashes with anything (a module or header
+name another effect already uses, ports that don't match the spec), it reports why
+and leaves `effects/` and the registry exactly as they were.
+
 ### 2. From a spec and RTL kept elsewhere
 
 `add` copies the sources into `effects/<name>/rtl/`. A spec names the effect, its

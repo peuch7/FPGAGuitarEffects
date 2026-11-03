@@ -14,7 +14,11 @@ int main(void)
 
     cli_printf("\n\nfx_cli: configuring the SSM2603 codec... ");
     cli_printf(codec_init() ? "NO ANSWER on I2C (check the IIC_0 EMIO pins in the XDC)\n" : "ok\n");
+    /* The first access to the PL. If the bitstream is not loaded, nothing answers
+     * on AXI and the CPU stalls here: say so first, so the hang is explained. */
+    cli_printf("fx_cli: reading the router's patch memory (stuck here = no bitstream)... ");
     patch_init(fx_bram());
+    cli_printf("ok\n");
     cli_banner();
 
     for (;;) {

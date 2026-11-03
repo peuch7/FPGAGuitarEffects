@@ -1,0 +1,4 @@
+# Text files are LF everywhere, so files generated on Windows and on macOS/Linux
+# are byte-identical and `fx.py gen --check` agrees with git.
+* text=auto eol=lf
+*.bat text eol=crlf

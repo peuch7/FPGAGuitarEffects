@@ -192,6 +192,12 @@ def test_remove_refuses_effect_used_by_a_preset(repo):
     (lambda s: s["ports"].update(sample_in=None), "cannot be null"),
     (lambda s: s.update(sources=["missing.sv"]), "not found"),
     (lambda s: s.update(reference_model="x"), "unknown keys"),
+    (lambda s: s["params"][0].update(index="0"), "index must be int"),
+    (lambda s: s["params"][0].update(max=255.5), "max must be int"),
+    (lambda s: s["params"][0].update(default=[1]), "default must be"),
+    (lambda s: s.update(sources="tremolo.sv"), "sources must be a list"),
+    (lambda s: s.update(sources=["tremolo.txt"]), "sources must be"),
+    (lambda s: s.update(params={"a": 1}), "params must be a list"),
 ])
 def test_spec_errors(tmp_path, change, message):
     path = tremolo_spec(tmp_path)
@@ -218,12 +224,41 @@ def test_wide_knob_port_is_refused(tmp_path):
         derive_spec([tmp_path / "wide.sv"], name="wide")
 
 
-def test_module_name_clash_is_refused(repo, tmp_path):
+def test_module_name_clash_is_refused_and_leaves_nothing_behind(repo, tmp_path):
     (tmp_path / "delay2.sv").write_text(TREMOLO_CONTRACT_SV.replace("module tremolo", "module delay"))
     spec = derive_spec([tmp_path / "delay2.sv"], name="delay2")
-    repo.import_effect(spec)
+    before = repo.layout.registry.read_text()
     with pytest.raises(FxError, match="module delay is defined by both"):
-        repo.validate()
+        repo.import_effect(spec)
+    assert "delay2" not in repo.registry.effects
+    assert not repo.layout.effect_dir("delay2").exists()
+    assert repo.layout.registry.read_text() == before
+    repo.validate()                 # the project is still fine
+
+
+def test_failed_re_import_keeps_the_old_files(repo, tmp_path):
+    original = (repo.layout.effect_dir("delay") / "rtl" / "delay.sv").read_text()
+    spec = Spec.load(repo.layout.spec_path("delay"))
+    (tmp_path / "delay.sv").write_text(TREMOLO_CONTRACT_SV.replace("module tremolo", "module chorus"))
+    spec.sources = [str(tmp_path / "delay.sv"), str(repo.layout.effect_dir("delay") / "rtl" / "delay_top.sv")]
+    spec.root = Path("/")
+    with pytest.raises(FxError):
+        repo.import_effect(spec)    # chorus is taken, and delay_top's core is gone
+    assert (repo.layout.effect_dir("delay") / "rtl" / "delay.sv").read_text() == original
+    repo.validate()
+
+
+def test_remove_unknown_effect(repo):
+    with pytest.raises(FxError, match="not an active effect"):
+        repo.remove_effect("nope")
+
+
+def test_generated_files_are_utf8_with_lf(repo):
+    repo.gen()
+    for path in list(repo.layout.gen.rglob("*.*")) + [repo.layout.registry]:
+        data = path.read_bytes()
+        assert b"\r\n" not in data, path
+        data.decode("utf-8")
 
 
 # -- generated wrappers ------------------------------------------------------------
@@ -270,6 +305,20 @@ def test_raw_knob_too_big_for_its_port_is_refused(repo, tmp_path):
     path.write_text(json.dumps(raw))
     with pytest.raises(FxError, match="does not fit the 8-bit port"):
         repo.import_effect(Spec.load(path))
+
+
+@needs_verilator
+def test_an_effect_named_like_the_bank_ports_still_lints(repo, tmp_path):
+    # The bank's ports are fx_sel, fx_params...; an effect called "fx" used to
+    # declare fx_params and fx_sel again.
+    path = tremolo_spec(tmp_path)
+    raw = json.loads(path.read_text())
+    raw["name"] = "fx"
+    path.write_text(json.dumps(raw))
+    repo.import_effect(Spec.load(path))
+    repo.gen()
+    ok, text = sim.lint(repo.layout)
+    assert ok, text
 
 
 def test_removed_wrapper_is_deleted(repo, tmp_path):
@@ -325,6 +374,21 @@ def test_re_adding_an_effect_from_its_own_folder_keeps_it(repo):
     assert "added chorus as id 5" in res.stdout
     assert (repo.layout.effect_dir("chorus") / "rtl" / "chorus.sv").read_text() == before
     assert (repo.layout.effect_dir("chorus") / "rtl" / "chorus_sine_table.svh").exists()
+
+
+def test_power_on_rolls_back_when_the_project_does_not_check_out(repo):
+    (repo.layout.presets / "broken.json").write_text(
+        json.dumps({"name": "broken", "stages": [{"effect": "nope"}]}))
+    before = repo.layout.registry.read_text()
+    res = fx(repo, "power-on", "broken")
+    assert res.returncode == 1 and "not in the build" in res.stderr
+    assert repo.layout.registry.read_text() == before
+
+
+def test_corrupt_registry_is_an_error_not_a_crash(repo):
+    repo.layout.registry.write_text("{ not json")
+    res = fx(repo, "list")
+    assert res.returncode == 1 and "cannot read the registry" in res.stderr
 
 
 def test_list(repo):

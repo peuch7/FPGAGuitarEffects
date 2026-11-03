@@ -225,6 +225,8 @@ module tb_audio_path;
 
         $display("tb_audio_path: ADC sent %0d, router in %0d / out %0d, DAC got L %0d R %0d: %s",
                  n_sent, n_in, n_out, n_left, n_right, errors == 0 ? "PASS" : "FAIL");
+        if (errors != 0)
+            $fatal(1, "tb_audio_path: %0d error(s)", errors);
         $finish;
     end
 

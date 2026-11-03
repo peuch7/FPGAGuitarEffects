@@ -16,7 +16,17 @@ _ASCII = {"\u2014": "-", "\u2013": "-", "\u2018": "'", "\u2019": "'", "\u201c": 
 def c_string(text: str) -> str:
     text = "".join(_ASCII.get(ch, ch) for ch in text)
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-    return '"' + text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
+    out = []
+    for ch in text:
+        if ch in '\\"':
+            out.append("\\" + ch)
+        elif ch == "?":
+            out.append("\\?")              # no trigraphs (??= etc.) under -std=c99/c11
+        elif ord(ch) < 0x20 or ord(ch) == 0x7F:
+            out.append(f"\\{ord(ch):03o}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
 
 
 def c_double(value: float) -> str:

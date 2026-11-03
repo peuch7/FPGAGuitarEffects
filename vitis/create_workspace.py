@@ -75,17 +75,19 @@ def main() -> int:
         # hello_world gives the standard CMake app; its own sources are replaced below.
         app = client.create_app_component(name=APP, platform=posix(xpfm), domain=DOMAIN,
                                           template="hello_world")
-        try:
-            app.set_app_config(key="USER_COMPILE_SOURCES", values=[posix(s) for s in SOURCES])
-            app.set_app_config(key="USER_INCLUDE_DIRECTORIES", values=[posix(d) for d in INCLUDES])
-        except Exception as exc:
-            # Fallback: copy the sources into the app. Re-run with a fresh
-            # build/vitis after editing them in the repo.
-            print(f"fx: could not point the app at the repo ({exc}); copying sources instead")
-            for src in SOURCES + [p for d in INCLUDES for p in d.glob("*.h")]:
-                app.import_files(from_loc=posix(src.parent), files=[src.name], dest_dir_in_cmp="src")
-            app.set_app_config(key="USER_COMPILE_SOURCES", values=[s.name for s in SOURCES])
-        app.set_app_config(key="USER_LINK_LIBRARIES", values=["m"])
+    # Every run, not only on creation: a .c file added to sw/fx_cli since the
+    # workspace was made must not be silently left out of the build.
+    try:
+        app.set_app_config(key="USER_COMPILE_SOURCES", values=[posix(s) for s in SOURCES])
+        app.set_app_config(key="USER_INCLUDE_DIRECTORIES", values=[posix(d) for d in INCLUDES])
+    except Exception as exc:
+        # Fallback: copy the sources into the app. Re-run this script after
+        # editing them in the repo (or after `fx.py gen`).
+        print(f"fx: could not point the app at the repo ({exc}); copying sources instead")
+        for src in SOURCES + [p for d in INCLUDES for p in d.glob("*.h")]:
+            app.import_files(from_loc=posix(src.parent), files=[src.name], dest_dir_in_cmp="src")
+        app.set_app_config(key="USER_COMPILE_SOURCES", values=[s.name for s in SOURCES])
+    app.set_app_config(key="USER_LINK_LIBRARIES", values=["m"])
 
     app.build()
     elf = WORKSPACE / APP / "build" / f"{APP}.elf"

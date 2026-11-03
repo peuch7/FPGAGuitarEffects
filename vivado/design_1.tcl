@@ -54,6 +54,15 @@ current_bd_design design_1
 set ps7 [create_bd_cell -type ip -vlnv [fx_vlnv processing_system7] processing_system7_0]
 apply_bd_automation -rule xilinx.com:bd_rule:processing_system7 \
     -config {make_external "FIXED_IO, DDR" apply_board_preset "1" Master "Disable" Slave "Disable"} $ps7
+# Safety: the MIO bank voltages must be the Zybo's (bank 0 3.3 V, bank 1 1.8 V),
+# which only the Digilent board preset sets. Refuse to go on without them rather
+# than configure the PS's pins for the wrong supply.
+foreach {param want} {PCW_PRESET_BANK0_VOLTAGE {LVCMOS 3.3V} PCW_PRESET_BANK1_VOLTAGE {LVCMOS 1.8V}} {
+    set got [get_property CONFIG.$param $ps7]
+    if {$got ne $want} {
+        error "fx: $param is '$got', expected '$want'. The Zybo Z7 board preset was not applied; check the board files (INSTALL.md)."
+    }
+}
 set_property -dict [list \
     CONFIG.PCW_USE_M_AXI_GP0             {1} \
     CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ  {50} \

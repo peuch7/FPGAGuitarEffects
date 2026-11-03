@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from . import routermap as rm
+from .textio import read_text, write_text
 
 COMMENT = ("Written by scripts/fx.py; edit with fx.py add/remove/power-on. "
            "Ids are append-only: a retired id is never given to another effect.")
@@ -35,15 +36,24 @@ class Registry:
         path = Path(path)
         if not path.exists():
             return cls(path=path)
-        raw = json.loads(path.read_text())
-        reg = cls(
-            effects={k: int(v) for k, v in raw.get("effects", {}).items()},
-            retired={k: int(v) for k, v in raw.get("retired", {}).items()},
-            power_on=raw.get("power_on", "clean"),
-            path=path,
-        )
+        try:
+            raw = json.loads(read_text(path))
+            reg = cls(
+                effects={str(k): int(v) for k, v in raw.get("effects", {}).items()},
+                retired={str(k): int(v) for k, v in raw.get("retired", {}).items()},
+                power_on=str(raw.get("power_on", "clean")),
+                path=path,
+            )
+        except (OSError, UnicodeDecodeError, ValueError, TypeError, AttributeError) as exc:
+            raise RegistryError(f"{path}: cannot read the registry ({exc})") from None
         reg.check()
         return reg
+
+    def snapshot(self) -> tuple:
+        return dict(self.effects), dict(self.retired), self.power_on
+
+    def restore(self, snap: tuple) -> None:
+        self.effects, self.retired, self.power_on = dict(snap[0]), dict(snap[1]), snap[2]
 
     def save(self) -> None:
         raw = {
@@ -53,7 +63,7 @@ class Registry:
             "retired": dict(sorted(self.retired.items(), key=lambda kv: kv[1])),
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(raw, indent=2) + "\n")
+        write_text(self.path, json.dumps(raw, indent=2) + "\n")
 
     def check(self) -> None:
         owner: Dict[int, str] = {}

@@ -20,7 +20,7 @@ set fx_repo       [file normalize [file join $fx_script_dir ..]]
 set fx_proj_name  digital_effects
 set fx_proj_dir   [file join $fx_repo build vivado]
 set fx_part       xc7z010clg400-1
-set fx_board_part digilentinc.com:zybo-z7-10:part0:1.2
+set fx_board_part digilentinc.com:zybo-z7-10:part0:1.2     ;# preferred; any installed version of this board works
 
 set fx_force [expr {[info exists argv] && [lsearch -exact $argv --force] >= 0}]
 set fx_xpr   [file join $fx_proj_dir $fx_proj_name.xpr]
@@ -56,7 +56,13 @@ if {[llength [get_board_parts -quiet $fx_board_part]] == 0} {
     catch {xhub::update [xhub::get_xitems -quiet *zybo-z7-10*]}
 }
 if {[llength [get_board_parts -quiet $fx_board_part]] == 0} {
-    error "fx: Digilent board files for the Zybo Z7-10 are not installed. See INSTALL.md, 'Board files'."
+    # Another version of the same board's files is fine; never fall back to another board.
+    set fx_any [lsort -dictionary [get_board_parts -quiet digilentinc.com:zybo-z7-10:part0:*]]
+    if {[llength $fx_any] == 0} {
+        error "fx: Digilent board files for the Zybo Z7-10 are not installed. See INSTALL.md, section 1."
+    }
+    set fx_board_part [lindex $fx_any end]
+    puts "fx: using board part $fx_board_part"
 }
 
 # -- project ---------------------------------------------------------------------

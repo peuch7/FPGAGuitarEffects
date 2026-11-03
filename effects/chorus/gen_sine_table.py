@@ -58,7 +58,7 @@ def _param(name: str) -> dict:
     effect is badly out of tune. Deriving both constants, and the buffer size,
     from the spec removes that whole class of drift.
     """
-    spec = json.loads(SPEC.read_text())
+    spec = json.loads(SPEC.read_text(encoding="utf-8"))
     for p in spec["params"]:
         if p["name"] == name:
             return p
@@ -139,7 +139,8 @@ def main() -> int:
     lines += ["", "`endif", ""]
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text("\n".join(lines))
+    with open(OUT_PATH, "w", encoding="utf-8", newline="\n") as f:   # same bytes on every OS
+        f.write("\n".join(lines))
     print(f"wrote {OUT_PATH.relative_to(REPO_ROOT)}  ({ENTRIES} entries, Q{WIDTH - 1})")
     print(f"  phase step per centi-hertz : {PHASE_INC_PER_CENTIHZ}")
     print(f"  delay units per base bit   : {DELAY_PER_BASE_UNIT}  "
