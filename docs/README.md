@@ -16,6 +16,7 @@ explain how each part works, so you can change it safely.
 | [adding_an_effect.md](adding_an_effect.md) | add a new effect, or change one, step by step |
 | [build_flow.md](build_flow.md) | understand or change the Vivado and Vitis scripts, the block design, the boot image |
 | [verification.md](verification.md) | run, read and extend the checks that work without a board |
+| [board_test_checklist.md](board_test_checklist.md) | test a build on the board, step by step, the first time or after big changes |
 
 ## Conventions used throughout
 

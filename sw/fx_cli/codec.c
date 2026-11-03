@@ -28,6 +28,7 @@
 
 #define LINE_IN_0DB      0x17       /* 1.5 dB steps: 0x00 = -34.5 dB, 0x3F = +33 dB */
 #define HP_0DB           0x79       /* 1 dB steps: 0x30 = -73 dB, 0x7F = +6 dB */
+#define HP_ZERO_CROSS    0x80       /* apply a new volume at the next zero crossing, not mid-wave (no click) */
 
 static XIicPs g_iic;
 
@@ -95,5 +96,6 @@ int codec_set_headphone_db(int db)
 {
     if (db < -73 || db > 6)
         return -1;
-    return codec_write_reg(R_LEFT_HP, (u16)(HP_0DB + db)) | codec_write_reg(R_RIGHT_HP, (u16)(HP_0DB + db));
+    u16 val = (u16)(HP_ZERO_CROSS | (HP_0DB + db));
+    return codec_write_reg(R_LEFT_HP, val) | codec_write_reg(R_RIGHT_HP, val);
 }

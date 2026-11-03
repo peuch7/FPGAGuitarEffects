@@ -1,5 +1,7 @@
 ## zybo_z7_10.xdc - pins for vivado/design_1.tcl on the Digilent Zybo Z7-10.
 ## Pin names and banks from Digilent's Zybo-Z7-Master.xdc (digilent-xdc repository).
+## Used in implementation only (create_project.tcl), since synthesis doesn't see the
+## IP clocks below; anything synthesis must see belongs in another file.
 
 ## 125 MHz PL clock (clk_wiz_0 makes the codec's 12.288 MHz MCLK from it)
 set_property -dict { PACKAGE_PIN K17   IOSTANDARD LVCMOS33 } [get_ports { sys_clock }]; #IO_L12P_T1_MRCC_35 Sch=sysclk

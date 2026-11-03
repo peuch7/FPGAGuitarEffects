@@ -18,13 +18,17 @@ sw/fx_cli/*.c, gen/sw/* ──────────────────�
 ## `vivado/create_project.tcl`
 
 **If the project doesn't exist yet,** it:
-1. Checks for the Zybo Z7-10 board files (`digilentinc.com:zybo-z7-10:part0:1.2`).
-   If they're missing it tries to install them from the Xilinx board store, then
-   stops with a pointer to INSTALL.md.
+1. Checks for the Zybo Z7-10 board files (`digilentinc.com:zybo-z7-10:part0:1.2`,
+   or any other installed version). It first adds the Vivado Store's local folder to
+   `board.repoPaths`, because batch mode doesn't search it the way the GUI does. If
+   the files are still missing it tries to install them from the Xilinx board store,
+   then stops with a pointer to INSTALL.md.
 2. Creates `build/vivado/digital_effects.xpr` for `xc7z010clg400-1`.
 3. Sources `gen/vivado/sources.tcl`, which adds every RTL file and header and sets
    the include path.
-4. Adds `constraints/zybo_z7_10.xdc`.
+4. Adds `constraints/zybo_z7_10.xdc`, for implementation only: its clock groups name
+   clocks made inside the PS7 and `clk_wiz` IP, which top-level synthesis sees as
+   black boxes.
 5. Sources `vivado/design_1.tcl` to build the block design.
 6. Makes the HDL wrapper (`design_1_wrapper`) and sets it as top.
 

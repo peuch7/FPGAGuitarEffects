@@ -125,6 +125,10 @@ hanging.
 | `gain <dB>` | R0 and R1 `LINVOL` | −34.5 .. +33 dB | 1.5 dB (0x00 .. 0x2D, 0x17 = 0 dB) |
 | `vol <dB>` | R2 and R3 `HPVOL` | −73 .. +6 dB | 1 dB (0x30 .. 0x7F, 0x79 = 0 dB) |
 
+`vol` also sets the zero-cross bit (bit 7, `ZCEN`), so the new level takes effect when
+the waveform crosses zero, without a click. The line input has no such bit, so a large
+`gain` jump while playing still clicks.
+
 A guitar's output is well below line level, so `gain 6` to `gain 12` is a sensible
 start. Raise it until the loudest playing stays just short of clipping.
 

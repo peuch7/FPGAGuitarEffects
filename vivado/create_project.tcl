@@ -104,6 +104,9 @@ set_property target_language Verilog [current_project]
 
 source [file join $fx_repo gen vivado sources.tcl]
 add_files -fileset constrs_1 -norecurse [file join $fx_repo constraints zybo_z7_10.xdc]
+# Implementation only: its clock groups name clocks made inside the PS7 and clk_wiz
+# IP, which top-level synthesis sees as black boxes.
+set_property used_in_synthesis false [get_files zybo_z7_10.xdc]
 update_compile_order -fileset sources_1
 
 source [file join $fx_script_dir design_1.tcl]
