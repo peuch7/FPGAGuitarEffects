@@ -49,17 +49,35 @@ if {[file exists $fx_xpr] && !$fx_force} {
 
 # -- board files --------------------------------------------------------------
 
+# Boards installed from the Vivado Store live in the store's local folder, which the
+# GUI searches but batch mode does not: add it to the board search path.
+proc fx_add_board_store_path {} {
+    if {[catch {get_property LOCAL_ROOT_DIR [xhub::get_xstores xilinx_board_store]} store]
+            || $store eq ""} {
+        return
+    }
+    set paths [get_param board.repoPaths]
+    if {[lsearch -exact $paths $store] < 0} {
+        lappend paths $store
+    }
+    set_param board.repoPaths $paths
+}
+
+fx_add_board_store_path
 if {[llength [get_board_parts -quiet $fx_board_part]] == 0} {
-    puts "fx: board part $fx_board_part not installed; trying the Xilinx board store..."
+    puts "fx: board part $fx_board_part not installed; trying the Xilinx board store"
+    puts "fx: (the first time this downloads the store from GitHub and can take a few minutes)..."
     catch {xhub::refresh_catalog [xhub::get_xstores xilinx_board_store]}
     catch {xhub::install [xhub::get_xitems -quiet *zybo-z7-10*]}
     catch {xhub::update [xhub::get_xitems -quiet *zybo-z7-10*]}
+    fx_add_board_store_path
 }
 if {[llength [get_board_parts -quiet $fx_board_part]] == 0} {
     # Another version of the same board's files is fine; never fall back to another board.
     set fx_any [lsort -dictionary [get_board_parts -quiet digilentinc.com:zybo-z7-10:part0:*]]
     if {[llength $fx_any] == 0} {
-        error "fx: Digilent board files for the Zybo Z7-10 are not installed. See INSTALL.md, section 1."
+        error "fx: Digilent board files for the Zybo Z7-10 not found in board.repoPaths\
+               ([get_param board.repoPaths]). See INSTALL.md, section 1."
     }
     set fx_board_part [lindex $fx_any end]
     puts "fx: using board part $fx_board_part"
