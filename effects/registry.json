@@ -1,0 +1,13 @@
+{
+  "_comment": "Written by scripts/fx.py; edit with fx.py add/sync/remove. Ids are append-only: a retired id is never given to another effect.",
+  "power_on": "clean",
+  "effects": {
+    "overdrive": 1,
+    "distortion": 2,
+    "delay": 3,
+    "echo": 4,
+    "chorus": 5,
+    "reverb": 6
+  },
+  "retired": {}
+}

@@ -1,0 +1,9 @@
+{
+  "name": "ambient",
+  "description": "Chorus into a long, soft delay into a big reverb.",
+  "stages": [
+    {"effect": "chorus", "params": {"rate": 0.8, "depth": 2.5, "mix": 0.4}},
+    {"effect": "delay", "params": {"delay_samples": 21600, "feedback": 0.45, "mix": 0.35}},
+    {"effect": "reverb", "params": {"decay": 0.85, "damping": 0.3, "mix": 0.4}}
+  ]
+}

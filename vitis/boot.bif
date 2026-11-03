@@ -1,0 +1,12 @@
+// boot.bif - BOOT.BIN for booting fx_cli from an SD card (no JTAG, no PC).
+//
+//   bootgen -image vitis/boot.bif -arch zynq -o build/BOOT.BIN -w
+//
+// Run from the repo root after vitis/create_workspace.py. Copy build/BOOT.BIN to
+// a FAT32 SD card and set JP5 to SD. See INSTALL.md, "Booting from an SD card".
+the_ROM_image:
+{
+    [bootloader] build/vitis/zybo_platform/export/zybo_platform/sw/boot/fsbl.elf
+    build/design_1_wrapper.bit
+    build/vitis/fx_cli/build/fx_cli.elf
+}

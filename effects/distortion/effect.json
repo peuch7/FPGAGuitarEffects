@@ -1,0 +1,38 @@
+{
+  "name": "distortion",
+  "description": "hard-clipping distortion with a tone control",
+  "top": "distortion_top",
+  "sources": [
+    "rtl/distortion.sv",
+    "rtl/distortion_top.sv"
+  ],
+  "params": [
+    {
+      "name": "drive",
+      "index": 0,
+      "default": 4,
+      "scale": "raw",
+      "min": 1,
+      "max": 64,
+      "unit": "x",
+      "doc": "Pre-clip gain. The clip threshold stays at full scale."
+    },
+    {
+      "name": "tone",
+      "index": 1,
+      "default": 0.5,
+      "scale": "q16",
+      "doc": "0 = dark (~800 Hz one-pole), 1 = open (~12 kHz)."
+    },
+    {
+      "name": "level",
+      "index": 2,
+      "default": 0.5,
+      "scale": "q16",
+      "doc": "Output attenuation, applied after clipping."
+    }
+  ],
+  "cycles_per_sample": 32,
+  "flush_samples": 16,
+  "reference_model": "wavsim.refmodels.distortion:process"
+}
