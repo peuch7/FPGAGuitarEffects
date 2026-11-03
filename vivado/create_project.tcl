@@ -13,7 +13,8 @@
 #
 # If the project already exists it is opened instead, and the source list is
 # refreshed from gen/vivado/sources.tcl (so an effect added with fx.py shows up).
-# Pass -tclargs --force to delete and recreate it.
+# A project an earlier run left unfinished is recreated. Pass -tclargs --force to
+# delete and recreate it anyway.
 
 set fx_script_dir [file dirname [file normalize [info script]]]
 set fx_repo       [file normalize [file join $fx_script_dir ..]]
@@ -36,21 +37,9 @@ proc fx_refresh_module_refs {} {
     }
 }
 
-if {[file exists $fx_xpr] && !$fx_force} {
-    if {[llength [get_projects -quiet $fx_proj_name]] == 0} {
-        open_project $fx_xpr
-    }
-    source [file join $fx_repo gen vivado sources.tcl]
-    update_compile_order -fileset sources_1
-    fx_refresh_module_refs
-    puts "fx: opened $fx_xpr (sources refreshed; use -tclargs --force to recreate)"
-    return
-}
-
-# -- board files --------------------------------------------------------------
-
 # Boards installed from the Vivado Store live in the store's local folder, which the
-# GUI searches but batch mode does not: add it to the board search path.
+# GUI searches but batch mode does not: add it to the board search path. Before
+# open_project too, or Vivado drops the board part of the project it opens.
 proc fx_add_board_store_path {} {
     if {[catch {get_property LOCAL_ROOT_DIR [xhub::get_xstores xilinx_board_store]} store]
             || $store eq ""} {
@@ -64,6 +53,26 @@ proc fx_add_board_store_path {} {
 }
 
 fx_add_board_store_path
+
+if {[file exists $fx_xpr] && !$fx_force} {
+    if {[llength [get_projects -quiet $fx_proj_name]] == 0} {
+        open_project $fx_xpr
+    }
+    # The wrapper becomes top last, so any other top means an earlier run stopped
+    # partway (say, in design_1.tcl): recreate rather than build half a project.
+    if {[get_property top [current_fileset]] eq "design_1_wrapper"} {
+        source [file join $fx_repo gen vivado sources.tcl]
+        update_compile_order -fileset sources_1
+        fx_refresh_module_refs
+        puts "fx: opened $fx_xpr (sources refreshed; use -tclargs --force to recreate)"
+        return
+    }
+    puts "fx: $fx_xpr was left unfinished by an earlier run; recreating it"
+    close_project
+}
+
+# -- board files --------------------------------------------------------------
+
 if {[llength [get_board_parts -quiet $fx_board_part]] == 0} {
     puts "fx: board part $fx_board_part not installed; trying the Xilinx board store"
     puts "fx: (the first time this downloads the store from GitHub and can take a few minutes)..."
