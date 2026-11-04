@@ -29,9 +29,9 @@
 /* -- encoders: EMIO GPIO 0..14 (bank 2); encoder k on bits 3k (A), 3k+1 (B),
  *    3k+2 (switch, active low). Pins in constraints/zybo_z7_10.xdc. ------------- */
 #define PANEL_N_ENC         5
-#define PANEL_ENC_MAIN      4       /* the one beside the screen: JE1..3 */
+#define PANEL_ENC_MAIN      4       /* the one beside the screen: JC1, JC7, JC2 */
 #define PANEL_ENC_KNOB0     0       /* the four under the screen, left to right: */
-                                    /* encoders KNOB0 .. KNOB0+3 (JC top, JC bottom, JD top, JD bottom) */
+                                    /* encoders KNOB0 .. KNOB0+3 (on JE, JE, JD, JD) */
 #define PANEL_ENC_REVERSE   0x00    /* bit k set: encoder k counts the other way (instead of
                                        swapping its A and B wires) */
 #define PANEL_POLL_HZ       2000    /* timer interrupt: encoders and the UART receive FIFO */

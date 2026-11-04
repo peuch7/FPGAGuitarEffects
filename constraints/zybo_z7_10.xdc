@@ -29,21 +29,21 @@ set_property -dict { PACKAGE_PIN N17   IOSTANDARD LVCMOS33 } [get_ports { IIC_0_
 ## wrapper adds IOBUFs). Encoder k: [3k] A, [3k+1] B, [3k+2] switch (active low).
 ## PULLUP: bare encoders need no resistors. The TFT is on Pmod JF, which is MIO:
 ## configured in the PS, no constraints here. Wiring: docs/front_panel.md.
-set_property -dict { PACKAGE_PIN V15   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[0]  }]; #IO_L10P_T1_34 Sch=jc_p[1]  enc0 A
-set_property -dict { PACKAGE_PIN W15   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[1]  }]; #IO_L10N_T1_34 Sch=jc_n[1]  enc0 B
-set_property -dict { PACKAGE_PIN T11   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[2]  }]; #IO_L1P_T0_34 Sch=jc_p[2]   enc0 switch
-set_property -dict { PACKAGE_PIN W14   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[3]  }]; #IO_L8P_T1_34 Sch=jc_p[3]   enc1 A
-set_property -dict { PACKAGE_PIN Y14   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[4]  }]; #IO_L8N_T1_34 Sch=jc_n[3]   enc1 B
-set_property -dict { PACKAGE_PIN T12   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[5]  }]; #IO_L2P_T0_34 Sch=jc_p[4]   enc1 switch
-set_property -dict { PACKAGE_PIN T14   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[6]  }]; #IO_L5P_T0_34 Sch=jd_p[1]   enc2 A
-set_property -dict { PACKAGE_PIN T15   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[7]  }]; #IO_L5N_T0_34 Sch=jd_n[1]   enc2 B
-set_property -dict { PACKAGE_PIN P14   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[8]  }]; #IO_L6P_T0_34 Sch=jd_p[2]   enc2 switch
-set_property -dict { PACKAGE_PIN U14   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[9]  }]; #IO_L11P_T1_SRCC_34 Sch=jd_p[3] enc3 A
-set_property -dict { PACKAGE_PIN U15   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[10] }]; #IO_L11N_T1_SRCC_34 Sch=jd_n[3] enc3 B
-set_property -dict { PACKAGE_PIN V17   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[11] }]; #IO_L21P_T3_DQS_34 Sch=jd_p[4] enc3 switch
-set_property -dict { PACKAGE_PIN V12   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[12] }]; #IO_L4P_T0_34 Sch=je[1]     enc4 A (main)
-set_property -dict { PACKAGE_PIN W16   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[13] }]; #IO_L18N_T2_34 Sch=je[2]    enc4 B (main)
-set_property -dict { PACKAGE_PIN J15   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[14] }]; #IO_25_35 Sch=je[3]         enc4 switch (main)
+set_property -dict { PACKAGE_PIN V12   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[0]  }]; #IO_L4P_T0_34 Sch=je[1] JE1 enc0 (knob 1) A
+set_property -dict { PACKAGE_PIN V13   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[1]  }]; #IO_L3N_T0_DQS_34 Sch=je[7] JE7 enc0 (knob 1) B
+set_property -dict { PACKAGE_PIN U17   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[2]  }]; #IO_L9N_T1_DQS_34 Sch=je[8] JE8 enc0 (knob 1) switch
+set_property -dict { PACKAGE_PIN J15   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[3]  }]; #IO_25_35 Sch=je[3] JE3 enc1 (knob 2) A
+set_property -dict { PACKAGE_PIN T17   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[4]  }]; #IO_L20P_T3_34 Sch=je[9] JE9 enc1 (knob 2) B
+set_property -dict { PACKAGE_PIN Y17   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[5]  }]; #IO_L7N_T1_34 Sch=je[10] JE10 enc1 (knob 2) switch
+set_property -dict { PACKAGE_PIN T14   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[6]  }]; #IO_L5P_T0_34 Sch=jd_p[1] JD1 enc2 (knob 3) A
+set_property -dict { PACKAGE_PIN U14   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[7]  }]; #IO_L11P_T1_SRCC_34 Sch=jd_p[3] JD7 enc2 (knob 3) B
+set_property -dict { PACKAGE_PIN U15   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[8]  }]; #IO_L11N_T1_SRCC_34 Sch=jd_n[3] JD8 enc2 (knob 3) switch
+set_property -dict { PACKAGE_PIN P14   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[9]  }]; #IO_L6P_T0_34 Sch=jd_p[2] JD3 enc3 (knob 4) A
+set_property -dict { PACKAGE_PIN V17   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[10] }]; #IO_L21P_T3_DQS_34 Sch=jd_p[4] JD9 enc3 (knob 4) B
+set_property -dict { PACKAGE_PIN V18   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[11] }]; #IO_L21N_T3_DQS_34 Sch=jd_n[4] JD10 enc3 (knob 4) switch
+set_property -dict { PACKAGE_PIN V15   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[12] }]; #IO_L10P_T1_34 Sch=jc_p[1] JC1 enc4 (main) A
+set_property -dict { PACKAGE_PIN W14   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[13] }]; #IO_L8P_T1_34 Sch=jc_p[3] JC7 enc4 (main) B
+set_property -dict { PACKAGE_PIN W15   IOSTANDARD LVCMOS33  PULLUP true } [get_ports { GPIO_0_0_tri_io[14] }]; #IO_L10N_T1_34 Sch=jc_n[1] JC2 enc4 (main) switch
 
 ## LEDs: LD0 overrun, LD1 fx_timeout, LD2 router busy (glows while audio runs), LD3 audio out of reset
 set_property -dict { PACKAGE_PIN M14   IOSTANDARD LVCMOS33 } [get_ports { led[0] }]; #IO_L23P_T3_35 Sch=led[0]

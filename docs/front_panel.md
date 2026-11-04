@@ -73,13 +73,15 @@ LITE, EN, BAT.
 
 Each encoder has 5 pins: **A**, **B**, **C** (common), and two switch pins.
 
-| encoder | role | A | B | switch | C and the 2nd switch pin |
-|---|---|---|---|---|---|
-| ENC0 | knob 1 (leftmost) | JC1 | JC2 | JC3 | JC5 (GND) |
-| ENC1 | knob 2 | JC7 | JC8 | JC9 | JC11 (GND) |
-| ENC2 | knob 3 | JD1 | JD2 | JD3 | JD5 (GND) |
-| ENC3 | knob 4 (rightmost) | JD7 | JD8 | JD9 | JD11 (GND) |
-| ENC4 | **main** | JE1 | JE2 | JE3 | JE5 (GND) |
+| encoder | role | A | B | switch |
+|---|---|---|---|---|
+| ENC0 | knob 1 (leftmost) | JE1 | JE7 | JE8 |
+| ENC1 | knob 2 | JE3 | JE9 | JE10 |
+| ENC2 | knob 3 | JD1 | JD7 | JD8 |
+| ENC3 | knob 4 (rightmost) | JD3 | JD9 | JD10 |
+| ENC4 | **main** | JC1 | JC7 | JC2 |
+
+Each encoder's C pin and second switch pin go to GND: pin 5 or 11 of a Pmod.
 
 - **Bare encoders need no resistors:** the XDC turns on the FPGA's pull-ups.
 - **Breakout modules** (KY-040 etc.) have their own pull-ups and a **+** pin. Connect
@@ -95,7 +97,8 @@ Each encoder has 5 pins: **A**, **B**, **C** (common), and two switch pins.
  FeatherWing ◄── JF ◄── MIO 10-13 (SPI1) + MIO 0, 9 (GPIO) ─┘
 ```
 
-Free afterwards: JA (all 8, the XADC port), JC4, JC10, JD4, JD10, JE4, JE7..10.
+Free afterwards: JA (all 8, the XADC port), JC3, JC4, JC8, JC9, JC10, JD2, JD4, JE2,
+JE4.
 
 ## Controls
 
