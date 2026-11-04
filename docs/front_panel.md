@@ -21,6 +21,7 @@ sync:
 
 - Adafruit 3.5" TFT FeatherWing, 480x320, HX8357D, SPI (product 3651)
 - 5 mechanical rotary encoders with a push switch (EC11 / KY-040 style)
+- A 5 V supply for the backlight
 - Wires to Pmods JC, JD, JE and JF
 
 ## Wiring
@@ -49,17 +50,24 @@ sync:
 | 8 | MIO9 | GPIO: reset | **RST** |
 | 9, 10 | MIO14, MIO15 | taken by SPI1 (SS1, SS2) | — |
 
-Leave every other FeatherWing pin unconnected: MI, 5 (SD CS), 6 (touch IRQ), SDA,
-SCL, LITE, EN, USB, BAT.
+**The backlight needs its own 5 V.** Wire the FeatherWing's **USB** pin to a 5 V supply
+(the driver's limit is 5.5 V), with its ground joined to the Zybo's. The Pmod can't
+provide it: the Zybo's Pmods only have 3.3 V. The 5 V feeds a boost converter that
+drives the LEDs, and the 3.3 V from JF6 powers the display and enables that converter.
+The **3V pin takes 3.3 V only**: never connect 5 V to it.
 
-- **The FeatherWing's ON/OFF switch must be ON.** It disconnects the 3.3 V.
+Leave every other FeatherWing pin unconnected: MI, 5 (SD CS), 6 (touch IRQ), SDA, SCL,
+LITE, EN, BAT.
+
+- **The FeatherWing's ON/OFF switch must be ON.** OFF grounds the backlight's enable
+  (LITE). With no Feather attached it doesn't cut the 3.3 V, so the display stays
+  powered with its backlight off.
 - **MISO isn't needed:** the firmware never reads from the display. Leaving it off
   also keeps the microSD slot off the bus. Don't insert an SD card in it.
-- **RST** is shared with the FeatherWing's reset button. To save the pin, leave it
-  off and set `TFT_PIN_RST` to `-1` in `panel_config.h`.
-- **The backlight is the main power draw.** If the Zybo resets, or the display
-  flickers or is dim, power the FeatherWing's 3V pin from an external 3.3 V supply
-  instead of JF6, with the grounds connected.
+- **RST** goes only to the FeatherWing's reset button. The display's own reset comes
+  from a voltage supervisor on the 3.3 V rail, and the firmware sends a software reset
+  at boot. To save the pin, leave it off and set `TFT_PIN_RST` to `-1` in
+  `panel_config.h`.
 
 ### Encoders → Pmods JC, JD, JE (PL, through EMIO GPIO)
 
@@ -248,16 +256,16 @@ The events are listed at the top of `sim/host/host_panel.c`: `@turn`, `@spin`,
 
 | symptom | check |
 |---|---|
-| boot says `front panel NOT started` | the XSA lacks SPI1 or EMIO GPIO: rebuild with `build_all --force` (or `vivado/build.tcl -tclargs --force`, then `vitis/create_workspace.py --update`) |
-| backlight off | FeatherWing switch ON; 3V and GND wired; 3.3 V at JF6 |
+| boot says `front panel NOT started` | the XSA lacks SPI1 or EMIO GPIO: rebuild with `build_all --force`. Booting from SD: the `BOOT.BIN` is older than the hardware; run `bootgen` again after the rebuild |
+| backlight never comes on | 5 V on the USB pin, grounds joined; 3.3 V on the 3V pin; FeatherWing switch ON |
+| backlight lights, then goes dark until the 5 V is reapplied | on boards with the TPS61169 driver (with the TSC2007 touch controller), its open-LED protection latches it off. With the 5 V left on, flip the ON/OFF switch off and on: if the light returns, check the display's flex cable. If not, measure 5 V at USB and about 2.5 V at LITE |
 | white screen, backlight on | SCK (JF4), MO (JF2), CS (JF1) |
-| black screen | DC (JF7) and RST (JF8) |
+| black screen, backlight on | DC (JF7) |
 | speckles or wrong colors | lower the SPI clock (`_16`); shorten the wires |
 | upside down | `TFT_MADCTL` = `0x60` |
 | an encoder counts the wrong way | its bit in `PANEL_ENC_REVERSE` |
 | an encoder moves every other click | `PANEL_STEPS_PER_DETENT` = `2` |
 | an encoder never changes | its wiring; the C pin to GND; the XDC's `GPIO_0_0_tri_io` pins |
-| the Zybo resets when the display turns on | backlight power: feed the FeatherWing from an external 3.3 V |
 | a build error on an `XPAR_...` name | open the platform's `xparameters.h` and use the name there in `panel_zynq.c` |
 
 ## Credits

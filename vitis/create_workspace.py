@@ -1,10 +1,11 @@
 """create_workspace.py - the Vitis workspace for fx_cli, from build/design_1_wrapper.xsa.
 
-    vitis -s vitis/create_workspace.py             create (or rebuild) the workspace
-    vitis -s vitis/create_workspace.py --update    after a new bitstream: re-read the .xsa, rebuild
+    vitis -s vitis/create_workspace.py             create the workspace, or rebuild the app
+    vitis -s vitis/create_workspace.py --update    recreate the workspace even if the .xsa is the same
 
 Run vivado/build.tcl (or Export Hardware from the GUI to build/design_1_wrapper.xsa)
-first. The workspace goes to build/vitis and is disposable.
+first. The workspace goes to build/vitis and is disposable: when the .xsa is not the
+one it was made from (a new bitstream), this deletes and recreates it.
 
   zybo_platform   standalone BSP for ps7_cortexa9_0, from the .xsa
   fx_cli          the app. Its sources are NOT copied into the workspace: the
@@ -16,6 +17,10 @@ _ide/workspace_journal.py when you do this in the GUI.
 """
 
 import argparse
+import hashlib
+import os
+import shutil
+import stat
 import sys
 from pathlib import Path
 
@@ -29,10 +34,22 @@ APP = "fx_cli"
 
 SOURCES = sorted((REPO / "sw" / "fx_cli").glob("*.c")) + [REPO / "gen" / "sw" / "fx_table.c"]
 INCLUDES = [REPO / "sw" / "fx_cli", REPO / "gen" / "sw"]
+STAMP = WORKSPACE / "fx_xsa.sha256"     # the .xsa the workspace was made from
 
 
 def posix(p: Path) -> str:
     return p.resolve().as_posix()
+
+
+def sha256(p: Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def remove_tree(path: Path) -> None:
+    def make_writable_and_retry(func, p, _exc):
+        os.chmod(p, stat.S_IWRITE)
+        func(p)
+    shutil.rmtree(path, onerror=make_writable_and_retry)
 
 
 def get(client, name):
@@ -45,13 +62,28 @@ def get(client, name):
 def main() -> int:
     ap = argparse.ArgumentParser(description="Create the fx_cli Vitis workspace")
     ap.add_argument("--xsa", default=str(REPO / "build" / "design_1_wrapper.xsa"))
-    ap.add_argument("--update", action="store_true", help="re-read the .xsa into an existing platform")
+    ap.add_argument("--update", action="store_true", help="recreate the workspace even if the .xsa is the same")
     args, _ = ap.parse_known_args()
 
     xsa = Path(args.xsa)
     if not xsa.exists():
         print(f"fx: {xsa} not found; build the hardware first (vivado/build.tcl or Export Hardware)")
         return 1
+
+    # A new .xsa means a new workspace, not an in-place update_hw: the FSBL keeps
+    # its own copy of the PS setup (ps7_init.c), which update_hw leaves behind. A
+    # BOOT.BIN built from it then boots with the old configuration (say, SPI1
+    # unclocked), although JTAG runs, which use the platform's ps7_init.tcl, work.
+    xsa_sum = sha256(xsa)
+    made_from = STAMP.read_text().strip() if STAMP.exists() else None
+    if WORKSPACE.exists() and (args.update or made_from != xsa_sum):
+        print(f"fx: recreating {WORKSPACE} from {xsa.name}"
+              + ("" if args.update else " (not the .xsa it was made from)"))
+        try:
+            remove_tree(WORKSPACE)
+        except OSError as exc:
+            print(f"fx: could not delete {WORKSPACE} ({exc}); close the Vitis GUI and run this again")
+            return 1
 
     WORKSPACE.mkdir(parents=True, exist_ok=True)
     client = vitis.create_client()
@@ -63,10 +95,8 @@ def main() -> int:
         platform = client.create_platform_component(
             name=PLATFORM, hw_design=posix(xsa), os="standalone", cpu="ps7_cortexa9_0",
             domain_name=DOMAIN, compiler="gcc")
-    elif args.update:
-        print(f"fx: re-reading {xsa} into {PLATFORM}")
-        platform.update_hw(hw_design=posix(xsa))
     platform.build()
+    STAMP.write_text(xsa_sum)
 
     app = get(client, APP)
     if app is None:

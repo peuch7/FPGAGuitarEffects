@@ -17,6 +17,7 @@
 
 #include "xparameters.h"
 #include "xil_exception.h"
+#include "xil_io.h"
 #include "xpseudo_asm.h"
 #include "sleep.h"
 
@@ -201,11 +202,25 @@ static int timer_init(void)
 
 /* -- panel.h ---------------------------------------------------------------------- */
 
+/* SPI1 and the GPIO work only if the boot turned their clocks on (ps7_init, run by
+ * the FSBL or by vitis/run.tcl). Without them the first SPI transfer would wait
+ * forever and take the command line down too: a BOOT.BIN whose FSBL predates the
+ * panel does exactly that. */
+#define SLCR_APER_CLK_CTRL  0xF800012Cu
+#define SLCR_SPI_CLK_CTRL   0xF8000158u
+#define APER_SPI1_CLKACT    (1u << 15)
+#define APER_GPIO_CLKACT    (1u << 22)
+#define SPI_CLK_CLKACT1     (1u << 1)
+
 int panel_init(void)
 {
     XGpioPs_Config *gc;
     XSpiPs_Config *sc;
-    uint32_t in;
+    uint32_t in, aper = Xil_In32(SLCR_APER_CLK_CTRL);
+
+    if (!(aper & APER_SPI1_CLKACT) || !(aper & APER_GPIO_CLKACT) ||
+        !(Xil_In32(SLCR_SPI_CLK_CTRL) & SPI_CLK_CLKACT1))
+        return -1;
 
 #ifdef SDT
     gc = XGpioPs_LookupConfig(XPAR_XGPIOPS_0_BASEADDR);

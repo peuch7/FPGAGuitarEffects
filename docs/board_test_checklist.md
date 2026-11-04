@@ -66,7 +66,7 @@ there; the *if not* notes and INSTALL.md's troubleshooting table say where to lo
 - [ ] **Since the front panel was added, rebuild both.** The block design changed (SPI1,
       EMIO GPIO), and an existing project keeps its old one:
       `vivado -mode batch -source vivado/build.tcl -tclargs --force`, then
-      `vitis -s vitis/create_workspace.py --update`. Or both in one go:
+      `vitis -s vitis/create_workspace.py`. Or both in one go:
       `build_all --force --no-run`.
   - [ ] Block RAM still **60**, WNS still ≥ 0 (the panel adds no PL logic). WNS: ____
   - [ ] The critical-warning scan above shows nothing new.

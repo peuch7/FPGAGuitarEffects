@@ -15,12 +15,6 @@
 int main(void)
 {
     int panel;
-    
-     /* TEMPORARY: time to reopen the serial terminal after an SD boot. */
-    for (int s = 5; s > 0; --s) {
-        cli_printf("fx_cli: starting in %d s\n", s);
-        fx_delay_us(1000000);       /* 1 s */
-    }
 
     cli_printf("\n\nfx_cli: configuring the SSM2603 codec... ");
     cli_printf(codec_init() ? "NO ANSWER on I2C (check the IIC_0 EMIO pins in the XDC)\n" : "ok\n");
@@ -34,7 +28,8 @@ int main(void)
     if (panel)
         ui_init();
     else
-        cli_printf("fx_cli: front panel NOT started (SPI1, GPIO or timer missing?); serial only\n");
+        cli_printf("fx_cli: front panel NOT started: SPI1 or GPIO is missing from the XSA, or the\n"
+                   "        boot didn't clock them (a BOOT.BIN older than the hardware?); serial only\n");
     cli_banner();
     cli_prompt();
 

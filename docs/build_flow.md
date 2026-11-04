@@ -23,8 +23,8 @@ started from:
    (default `C:\AMDDesignTools\2026.1`).
 2. `vivado -mode batch -notrace -source vivado/build.tcl` (with `--force` and
    `--jobs N` passed through).
-3. `vitis -s vitis/create_workspace.py --update`. `--update` is harmless on a first run
-   and keeps the platform in step with whichever `.xsa` is there.
+3. `vitis -s vitis/create_workspace.py`, which recreates the workspace by itself when
+   the `.xsa` has changed.
 4. `xsdb vitis/run.tcl`.
 
 It deletes `build/design_1_wrapper.xsa` and `fx_cli.elf` before the steps that make
@@ -161,8 +161,17 @@ when you click through the GUI.
 
 1. **Workspace:** `build/vitis`.
 2. **Platform `zybo_platform`:** from the XSA, standalone OS, `ps7_cortexa9_0`, domain
-   `standalone_ps7_cortexa9_0`. Vitis adds the FSBL boot domain automatically. With
-   `--update`, an existing platform re-reads the XSA (`update_hw`) before building.
+   `standalone_ps7_cortexa9_0`. Vitis adds the FSBL boot domain automatically.
+
+   **A new XSA means a new workspace.** The script stores the hash of the XSA it was
+   made from in `build/vitis/fx_xsa.sha256`. When the XSA differs, or with
+   `--update`, it deletes `build/vitis` and starts over.
+
+   It doesn't update in place (`update_hw`) because that refreshes the platform's
+   hardware files but not the FSBL's own copy of the PS setup (`ps7_init.c`). JTAG
+   runs would work, since `run.tcl` uses the platform's `ps7_init.tcl`. A `BOOT.BIN`
+   made from that FSBL would boot with the old setup instead; after the front panel
+   was added, that left SPI1 without a clock.
 3. **App `fx_cli`:** created from the `hello_world` template, whose sources are then
    replaced. Every run, the script sets:
    - `USER_COMPILE_SOURCES`: absolute paths of `sw/fx_cli/*.c` and
@@ -200,7 +209,8 @@ Run it from the repo root after both builds. It packs:
 - `fx_cli.elf`.
 
 Copy `BOOT.BIN` to a FAT32 SD card and set jumper JP5 to SD. The FSBL configures the
-PL, initializes the PS and starts `fx_cli`.
+PL, initializes the PS and starts `fx_cli`. Rerun `bootgen` after every rebuild:
+`BOOT.BIN` holds copies of all three files.
 
 ## Windows notes
 

@@ -130,7 +130,9 @@ build_all --no-run        :: build without programming
   `ps7_cortexa9_0`) and the app `fx_cli`.
 - The app compiles `sw/fx_cli/*.c` and `gen/sw/fx_table.c` straight from the repo,
   so after editing them you only need to rebuild.
-- After a new bitstream, run it with `--update`.
+- After a new bitstream it notices that the `.xsa` changed, and deletes and recreates
+  `build/vitis`, so the boot loader (FSBL) is rebuilt for the new hardware too.
+  `--update` forces that.
 
 **`vitis/run.tcl`:** programs the FPGA, initializes the PS (`ps7_init`), downloads
 `fx_cli.elf` and starts it. You can also open `build/vitis` in the Vitis GUI and
@@ -230,6 +232,7 @@ bootgen -image vitis/boot.bif -arch zynq -o build/BOOT.BIN -w
 
 Copy `build/BOOT.BIN` to the root of a FAT32 SD card, put it in the Zybo, set **JP5 to
 SD**, and power on. The serial command line still works if you plug the USB cable in.
+`BOOT.BIN` is a snapshot: after any rebuild, run `bootgen` again and copy it again.
 In the Vitis GUI, *Vitis → Create Boot Image → Zynq* does the same. The inputs are:
 - the FSBL: `zybo_platform/export/zybo_platform/sw/boot/fsbl.elf`;
 - the bitstream;
@@ -254,7 +257,7 @@ are generated too.
 
 - **Track A:**
   - `vivado -mode batch -source vivado/build.tcl`
-  - `vitis -s vitis/create_workspace.py --update`
+  - `vitis -s vitis/create_workspace.py`
   - `xsdb vitis/run.tcl`
 
   On Windows, `build_all` runs all three.

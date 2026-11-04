@@ -2,7 +2,8 @@
 rem build_all.bat - the whole flow on Windows, in one command:
 rem
 rem   1. Vivado: bitstream and .xsa          vivado/build.tcl
-rem   2. Vitis:  platform and fx_cli.elf     vitis/create_workspace.py --update
+rem   2. Vitis:  platform and fx_cli.elf     vitis/create_workspace.py (recreates build\vitis
+rem                                           whenever the .xsa has changed)
 rem   3. xsdb:   program the Zybo, start it  vitis/run.tcl
 rem
 rem   build_all                all three
@@ -89,7 +90,7 @@ echo.
 echo fx: [2/3] Vitis: platform and fx_cli.elf, a few minutes
 if not exist "%FX_XSA%" goto no_xsa
 if exist "%FX_ELF%" del "%FX_ELF%"
-call vitis -s vitis/create_workspace.py --update
+call vitis -s vitis/create_workspace.py
 if errorlevel 1 goto fail_vitis
 if not exist "%FX_ELF%" goto fail_vitis
 
