@@ -25,12 +25,14 @@ started from:
    `--jobs N` passed through).
 3. `vitis -s vitis/create_workspace.py`, which recreates the workspace by itself when
    the `.xsa` has changed.
-4. `xsdb vitis/run.tcl`.
+4. `bootgen -image vitis/boot.bif -arch zynq -o build/BOOT.BIN -w`, before
+   programming, so a board that is off or set to SD still gets its image.
+5. `xsdb vitis/run.tcl`.
 
-It deletes `build/design_1_wrapper.xsa` and `fx_cli.elf` before the steps that make
-them, and checks they exist afterwards. A failed step can't leave a stale file that
-looks like a success. `--sw` skips step 2, and `--no-run` skips step 4. On failure it
-stops and says what to check.
+It deletes `build/design_1_wrapper.xsa`, `fx_cli.elf` and `build/BOOT.BIN` before the
+steps that make them, and checks they exist afterwards. A failed step can't leave a
+stale file that looks like a success. `--sw` skips step 2, and `--no-run` skips step 5.
+On failure it stops and says what to check.
 
 ## `vivado/create_project.tcl`
 
@@ -201,7 +203,8 @@ This is the same sequence as the Vitis GUI's *Run* with FSBL-less initialization
 bootgen -image vitis/boot.bif -arch zynq -o build/BOOT.BIN -w
 ```
 
-Run it from the repo root after both builds. It packs:
+Run it from the repo root after both builds; `build_all` does this every time. It
+packs:
 - the FSBL: `build/vitis/zybo_platform/export/zybo_platform/sw/boot/fsbl.elf`, which
   Vitis built with the platform;
 - `build/design_1_wrapper.bit` (written by `vivado/build.tcl`; GUI users should
@@ -209,8 +212,8 @@ Run it from the repo root after both builds. It packs:
 - `fx_cli.elf`.
 
 Copy `BOOT.BIN` to a FAT32 SD card and set jumper JP5 to SD. The FSBL configures the
-PL, initializes the PS and starts `fx_cli`. Rerun `bootgen` after every rebuild:
-`BOOT.BIN` holds copies of all three files.
+PL, initializes the PS and starts `fx_cli`. `BOOT.BIN` holds copies of all three
+files, so after every rebuild it needs remaking and copying to the card again.
 
 ## Windows notes
 

@@ -104,12 +104,13 @@ vitis -s vitis/create_workspace.py                     # a few minutes
 xsdb vitis/run.tcl                                     # program the board and start the app
 ```
 
-**On Windows, `build_all.bat` does all three in one go**, from any folder. It calls
-the tools' `settings64.bat` first (from `C:\AMDDesignTools\2026.1`, or the folder in
-`FX_TOOLS`), and stops at the first step that fails:
+**On Windows, `build_all.bat` does all three in one go**, from any folder, and also
+writes the SD card image, `build/BOOT.BIN`. It calls the tools' `settings64.bat` first
+(from `C:\AMDDesignTools\2026.1`, or the folder in `FX_TOOLS`), and stops at the first
+step that fails:
 
 ```bat
-build_all                 :: Vivado, Vitis, then program the board
+build_all                 :: Vivado, Vitis, BOOT.BIN, then program the board
 build_all --force         :: recreate the Vivado project first (after block design or XDC changes)
 build_all --sw            :: skip Vivado: only the firmware changed
 build_all --no-run        :: build without programming
@@ -224,7 +225,8 @@ LEDs:
 
 ### Booting from an SD card (optional)
 
-To run without a PC:
+To run without a PC, make the boot image. `build_all` has already done this; without
+it, run:
 
 ```sh
 bootgen -image vitis/boot.bif -arch zynq -o build/BOOT.BIN -w
@@ -232,7 +234,8 @@ bootgen -image vitis/boot.bif -arch zynq -o build/BOOT.BIN -w
 
 Copy `build/BOOT.BIN` to the root of a FAT32 SD card, put it in the Zybo, set **JP5 to
 SD**, and power on. The serial command line still works if you plug the USB cable in.
-`BOOT.BIN` is a snapshot: after any rebuild, run `bootgen` again and copy it again.
+`BOOT.BIN` is a snapshot: after any rebuild, copy the new one to the card (without
+`build_all`, run `bootgen` again first).
 In the Vitis GUI, *Vitis → Create Boot Image → Zynq* does the same. The inputs are:
 - the FSBL: `zybo_platform/export/zybo_platform/sw/boot/fsbl.elf`;
 - the bitstream;

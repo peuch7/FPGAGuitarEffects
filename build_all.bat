@@ -1,12 +1,13 @@
 @echo off
 rem build_all.bat - the whole flow on Windows, in one command:
 rem
-rem   1. Vivado: bitstream and .xsa          vivado/build.tcl
-rem   2. Vitis:  platform and fx_cli.elf     vitis/create_workspace.py (recreates build\vitis
-rem                                           whenever the .xsa has changed)
-rem   3. xsdb:   program the Zybo, start it  vitis/run.tcl
+rem   1. Vivado:  bitstream and .xsa          vivado/build.tcl
+rem   2. Vitis:   platform and fx_cli.elf     vitis/create_workspace.py (recreates build\vitis
+rem                                            whenever the .xsa has changed)
+rem   3. bootgen: build\BOOT.BIN for SD boot  vitis/boot.bif
+rem   4. xsdb:    program the Zybo, start it  vitis/run.tcl
 rem
-rem   build_all                all three
+rem   build_all                all four
 rem   build_all --force        recreate the Vivado project first. Needed after a change to
 rem                            vivado/design_1.tcl or the XDC: an existing project keeps
 rem                            its old block design.
@@ -15,7 +16,7 @@ rem   build_all --no-run       build, but don't program the board
 rem   build_all --jobs 8       Vivado's parallel jobs (default 4)
 rem
 rem It calls the tools' settings64.bat from FX_TOOLS, C:\AMDDesignTools\2026.1 unless
-rem FX_TOOLS is set to another install folder. Step 3 needs the board on, JP5 on JTAG,
+rem FX_TOOLS is set to another install folder. Step 4 needs the board on, JP5 on JTAG,
 rem and the PROG/UART cable connected.
 
 setlocal
@@ -28,6 +29,7 @@ set "FX_RUN=1"
 set "FX_JOBS=4"
 set "FX_XSA=build\design_1_wrapper.xsa"
 set "FX_ELF=build\vitis\fx_cli\build\fx_cli.elf"
+set "FX_BOOT=build\BOOT.BIN"
 
 :args
 if "%~1"=="" goto args_done
@@ -69,6 +71,7 @@ if not defined FX_HW goto check_vitis
 where /q vivado || goto no_tools
 :check_vitis
 where /q vitis || goto no_tools
+where /q bootgen || goto no_tools
 if not defined FX_RUN goto tools_ok
 where /q xsdb || goto no_tools
 :tools_ok
@@ -78,7 +81,7 @@ echo fx: started %TIME%
 rem -- 1. Vivado -------------------------------------------------------------------
 if not defined FX_HW goto vitis
 echo.
-echo fx: [1/3] Vivado: bitstream and .xsa, 15-30 minutes. Full log: vivado.log
+echo fx: [1/4] Vivado: bitstream and .xsa, 15-30 minutes. Full log: vivado.log
 if exist "%FX_XSA%" del "%FX_XSA%"
 call vivado -mode batch -notrace -source vivado/build.tcl -tclargs %FX_FORCE% --jobs %FX_JOBS%
 if errorlevel 1 goto fail_vivado
@@ -87,17 +90,26 @@ if not exist "%FX_XSA%" goto fail_vivado
 rem -- 2. Vitis --------------------------------------------------------------------
 :vitis
 echo.
-echo fx: [2/3] Vitis: platform and fx_cli.elf, a few minutes
+echo fx: [2/4] Vitis: platform and fx_cli.elf, a few minutes
 if not exist "%FX_XSA%" goto no_xsa
 if exist "%FX_ELF%" del "%FX_ELF%"
 call vitis -s vitis/create_workspace.py
 if errorlevel 1 goto fail_vitis
 if not exist "%FX_ELF%" goto fail_vitis
 
-rem -- 3. program ------------------------------------------------------------------
+rem -- 3. SD card image ------------------------------------------------------------
+rem Before programming, so a board that is off or on SD still gets its image.
+echo.
+echo fx: [3/4] bootgen: %FX_BOOT%, for booting from an SD card
+if exist "%FX_BOOT%" del "%FX_BOOT%"
+call bootgen -image vitis/boot.bif -arch zynq -o build/BOOT.BIN -w
+if errorlevel 1 goto fail_bootgen
+if not exist "%FX_BOOT%" goto fail_bootgen
+
+rem -- 4. program ------------------------------------------------------------------
 if not defined FX_RUN goto done
 echo.
-echo fx: [3/3] programming the Zybo over JTAG
+echo fx: [4/4] programming the Zybo over JTAG
 call xsdb vitis/run.tcl
 if errorlevel 1 goto fail_xsdb
 
@@ -106,6 +118,7 @@ echo.
 echo fx: done %TIME%
 if defined FX_RUN echo fx: fx_cli is running. Open the board's USB-UART at 115200 8N1.
 if not defined FX_RUN echo fx: built. To program the board: xsdb vitis/run.tcl
+echo fx: To boot from SD: copy %FX_BOOT% to the card's root and set JP5 to SD.
 exit /b 0
 
 rem -- failures --------------------------------------------------------------------
@@ -118,7 +131,7 @@ echo   --jobs N  Vivado's parallel jobs, default 4
 exit /b 1
 
 :no_tools
-echo fx: vivado, vitis or xsdb is not on the PATH after calling the settings64.bat
+echo fx: vivado, vitis, bootgen or xsdb is not on the PATH after calling the settings64.bat
 echo fx: files in %FX_TOOLS%. If the tools are installed elsewhere, set FX_TOOLS to
 echo fx: the folder that holds Vivado\ and Vitis\, for example:
 echo fx:   set FX_TOOLS=D:\Xilinx\2026.1
@@ -137,6 +150,12 @@ exit /b 1
 :fail_vitis
 echo.
 echo fx: Vitis failed: see the messages above. Compiler errors name a file in sw\fx_cli.
+exit /b 1
+
+:fail_bootgen
+echo.
+echo fx: bootgen failed: see the messages above. vitis/boot.bif needs the platform's
+echo fx: fsbl.elf, fx_cli.elf and build\design_1_wrapper.bit, which Vivado writes.
 exit /b 1
 
 :fail_xsdb

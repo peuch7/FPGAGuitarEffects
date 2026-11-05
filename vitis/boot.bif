@@ -2,8 +2,9 @@
 //
 //   bootgen -image vitis/boot.bif -arch zynq -o build/BOOT.BIN -w
 //
-// Run from the repo root after vitis/create_workspace.py. Copy build/BOOT.BIN to
-// a FAT32 SD card and set JP5 to SD. See INSTALL.md, "Booting from an SD card".
+// Run from the repo root after vitis/create_workspace.py (build_all.bat does it).
+// Copy build/BOOT.BIN to a FAT32 SD card and set JP5 to SD. See INSTALL.md,
+// "Booting from an SD card".
 the_ROM_image:
 {
     [bootloader] build/vitis/zybo_platform/export/zybo_platform/sw/boot/fsbl.elf

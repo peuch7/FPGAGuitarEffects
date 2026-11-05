@@ -259,7 +259,7 @@ The events are listed at the top of `sim/host/host_panel.c`: `@turn`, `@spin`,
 
 | symptom | check |
 |---|---|
-| boot says `front panel NOT started` | the XSA lacks SPI1 or EMIO GPIO: rebuild with `build_all --force`. Booting from SD: the `BOOT.BIN` is older than the hardware; run `bootgen` again after the rebuild |
+| boot says `front panel NOT started` | the XSA lacks SPI1 or EMIO GPIO: rebuild with `build_all --force`. Booting from SD: the card's `BOOT.BIN` is older than the hardware; copy the new `build/BOOT.BIN` to it after the rebuild |
 | backlight never comes on | 5 V on the USB pin, grounds joined; 3.3 V on the 3V pin; FeatherWing switch ON |
 | backlight lights, then goes dark until the 5 V is reapplied | on boards with the TPS61169 driver (with the TSC2007 touch controller), its open-LED protection latches it off. With the 5 V left on, flip the ON/OFF switch off and on: if the light returns, check the display's flex cable. If not, measure 5 V at USB and about 2.5 V at LITE |
 | white screen, backlight on | SCK (JF4), MO (JF2), CS (JF1) |

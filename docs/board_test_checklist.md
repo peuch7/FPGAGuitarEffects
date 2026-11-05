@@ -71,7 +71,8 @@ there; the *if not* notes and INSTALL.md's troubleshooting table say where to lo
   - [ ] Block RAM still **60**, WNS still ≥ 0 (the panel adds no PL logic). WNS: ____
   - [ ] The critical-warning scan above shows nothing new.
   - [ ] Vivado placed `GPIO_0_0_tri_io[0]` .. `[14]` (no UCIO-1 or NSTD-1 errors).
-- [ ] Optional, for running without a PC later:
+- [ ] Optional, for running without a PC later: `build_all` also writes
+      `build/BOOT.BIN`. Without it:
       `bootgen -image vitis/boot.bif -arch zynq -o build/BOOT.BIN -w`
 
 ## What to bring
