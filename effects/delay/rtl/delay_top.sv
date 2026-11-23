@@ -22,12 +22,9 @@ module delay_top (
     output logic                            sample_out_valid
 );
 
-    // delay.sv has no reset port. Reference it so lint does not flag an unused
-    // input, and so the intent is obvious to the next person reading this.
-    wire unused_rst_n = rst_n;
-
     delay u_delay (
         .clk              (clk),
+        .rst_n            (rst_n),
         .sample_in        (sample_in),
         .sample_in_valid  (sample_in_valid),
 

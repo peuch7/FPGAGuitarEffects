@@ -1,11 +1,11 @@
 `timescale 1ns / 1ps
 `include "effect_contract.svh"
 
-// tb_delay_wrap - regression test: shortening the delay while it runs.
+// tb_delay_wrap - regression test: changing the delay while it runs.
 //
 // The CLI changes knobs live. Cutting delay_samples from 48000 to 1000 while
-// the write pointer sits past 1000 must wrap it straight back into the shorter
-// loop. It must never walk past the 48000-sample buffer.
+// the write pointer sits past 1000 must restart that shorter loop rather than
+// expose stale audio. It must never walk past the 48000-sample buffer.
 //
 // Fails ($fatal) if the pointer leaves the buffer, or if, once wrapped, the
 // output is not the input delayed by the new length.
@@ -15,6 +15,7 @@ module tb_delay_wrap;
     localparam int LONG  = 48000;
     localparam int SHORT = 1000;
     localparam int CPS   = 4;           // clocks per sample: only the strobe matters here
+    localparam int INACTIVE_RESET_CYCLES = 512;
 
     logic clk = 1'b0;
     always #5 clk = ~clk;
@@ -71,6 +72,21 @@ module tb_delay_wrap;
         play(LONG - 8000);              // pointer well past SHORT
         params = knobs(SHORT);
         play(3 * SHORT);                // must have wrapped and refilled the short loop
+
+        // Two sample periods with no valid strobe must reset history and pointer.
+        repeat (INACTIVE_RESET_CYCLES) @(posedge clk);
+        for (int i = 0; i < SHORT; i++) begin
+            sample_in       <= `SAMPLE_WIDTH'(n * 977);
+            sample_in_valid <= 1'b1;
+            @(posedge clk);
+            sample_in_valid <= 1'b0;
+            history[n % (4 * SHORT)] = `SAMPLE_WIDTH'(n * 977);
+            repeat (CPS - 1) @(posedge clk);
+            if (sample_out_valid && (sample_out > 300 || sample_out < -300))
+                $fatal(1, "stale wet output after inactivity reset at sample %0d", n);
+            n++;
+        end
+
         // Now the output must be the input from exactly SHORT samples ago.
         for (int i = 0; i < SHORT; i++) begin
             sample_in       <= `SAMPLE_WIDTH'(n * 977);
