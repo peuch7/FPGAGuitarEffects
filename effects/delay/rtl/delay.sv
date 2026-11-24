@@ -44,38 +44,67 @@ module delay (
     assign max_addr = delay_samples != 0 ? ADDR_WIDTH'(delay_samples_clipped - 1) : '0;
     
     (* ram_style = "block" *)
-    logic signed [23:0] sample_buf [0:MAX_DELAY_SAMPLES - 1];    
+    logic signed [23:0] sample_buf [0:MAX_DELAY_SAMPLES - 1];
+
     logic [ADDR_WIDTH - 1:0] cur_addr = 'd0;
     logic signed [23:0] old_sample = '0;
     logic signed [23:0] cur_sample = '0;
     logic [15:0] filled_count = '0;
-    logic [9:0] inactive_count = '0;
-    logic signed [39:0] sample_out_unscaled;
+    logic [9:0] inactive_count = '0; //512 is our threshold, 2^9, add extra bit for safety
+    localparam logic signed [40:0] SAMPLE_MAX_Q16 = 41'sd8388607 <<< 16;
+    localparam logic signed [40:0] SAMPLE_MIN_Q16 = -41'sd8388608 <<< 16;
+
+    logic signed [40:0] sample_out_unscaled;
+    logic signed [40:0] sample_out_unscaled_clipped;
     logic sample_out_unscaled_valid = '0;
-    logic signed [39:0] to_be_stored_unscaled;
+    logic signed [40:0] to_be_stored_unscaled;
+    logic signed [40:0] to_be_stored_unscaled_clipped;
+    logic signed [40:0] input_unscaled;
+    logic signed [40:0] input_unscaled_clipped;
+    logic                         ram_we;
+    logic [ADDR_WIDTH-1:0]        ram_write_addr;
+    logic signed [23:0]           ram_write_data;
+    logic signed [23:0]           ram_rdata;
     logic history_ready;
     logic parameters_seen = '0;
 
     assign history_ready = (filled_count >= delay_samples_clipped)
                         && (delay_samples_clipped != 0);
- 
-    initial begin
-        for (int i = 0; i < MAX_DELAY_SAMPLES; i++) begin
-            sample_buf[i] = 24'sd0;
-        end
+
+    //make this simple to ensure bram can be inferred
+    always_ff @(posedge clk) begin
+        if (ram_we)
+            sample_buf[ram_write_addr] <= ram_write_data;
+        ram_rdata <= sample_buf[cur_addr];
     end
     
-    //we know this will fit in 40 bits (24 + 16), not 41
-    //endpoint attenuation negligible (1/2^16)
-    assign sample_out_unscaled = cur_sample * $signed({1'b0, (16'hFFFF - mix)}) +
+    // Clip in Q16 sample units before converting the accumulators back to samples.
+    assign sample_out_unscaled = cur_sample * $signed({1'b0, (16'hFFFF)}) +
                                  old_sample * $signed({1'b0, mix});
+    assign sample_out_unscaled_clipped =
+        (sample_out_unscaled > SAMPLE_MAX_Q16) ? SAMPLE_MAX_Q16 :
+        (sample_out_unscaled < SAMPLE_MIN_Q16) ? SAMPLE_MIN_Q16 :
+        sample_out_unscaled;
+
+    assign input_unscaled = sample_in * $signed({1'b0, 16'hFFFF});
+    assign input_unscaled_clipped =
+        (input_unscaled > SAMPLE_MAX_Q16) ? SAMPLE_MAX_Q16 :
+        (input_unscaled < SAMPLE_MIN_Q16) ? SAMPLE_MIN_Q16 :
+        input_unscaled;
                                  
-    assign to_be_stored_unscaled = sample_in  * $signed({1'b0, (16'hFFFF - feedback)}) + 
+    assign to_be_stored_unscaled = sample_in  * $signed({1'b0, (16'hFFFF)}) +
                                    old_sample * $signed({1'b0, feedback});
+    assign to_be_stored_unscaled_clipped =
+        (to_be_stored_unscaled > SAMPLE_MAX_Q16) ? SAMPLE_MAX_Q16 :
+        (to_be_stored_unscaled < SAMPLE_MIN_Q16) ? SAMPLE_MIN_Q16 :
+        to_be_stored_unscaled;
     
     always_ff @(posedge clk) begin
         sample_out_unscaled_valid <= 1'd0; //default
-        sample_out <= sample_out_unscaled >>> 16;
+        sample_out <= sample_out_unscaled_clipped >>> 16;
+        ram_we <= 1'b0;
+        ram_write_addr <= '0;
+        ram_write_data <= '0;
 
         if (!rst_n) begin
             cur_addr <= '0;
@@ -99,12 +128,14 @@ module delay (
                 cur_sample <= sample_in;
                 sample_out_unscaled_valid <= 1'b1;
                 if (delay_samples_clipped != 0) begin
-                    sample_buf[0] <= sample_in
-                                   * $signed({1'b0, (16'hFFFF - feedback)}) >>> 16;
+                    ram_we <= 1'b1;
+                    ram_write_addr <= '0;
+                    ram_write_data <= input_unscaled_clipped >>> 16;
                     cur_addr <= (max_addr == 0) ? '0 : ADDR_WIDTH'(1);
                     filled_count <= 16'd1;
                 end
             end
+        //inactive case - increment counter and reset filled count if over
         end else if (!sample_in_valid) begin
             inactive_count <= (inactive_count >= INACTIVE_RESET_CYCLES)
                             ? INACTIVE_RESET_CYCLES
@@ -116,6 +147,7 @@ module delay (
                 cur_sample <= '0;
                 filled_count <= '0;
             end
+        //active, non first sample case
         end else begin
             inactive_count <= '0;
 
@@ -125,13 +157,16 @@ module delay (
                 cur_sample <= '0;
                 filled_count <= '0;
                 cur_sample <= sample_in;
-                sample_buf[0] <= sample_in
-                               * $signed({1'b0, (16'hFFFF - feedback)}) >>> 16;
+                ram_we <= 1'b1;
+                ram_write_addr <= '0;
+                ram_write_data <= input_unscaled_clipped >>> 16;
                 sample_out_unscaled_valid <= 1'b1;
             end else if (history_ready) begin
-                old_sample <= sample_buf[cur_addr];
+                old_sample <= ram_rdata;
                 sample_out_unscaled_valid <= 1'b1;
-                sample_buf[cur_addr] <= to_be_stored_unscaled >>> 16;
+                ram_we <= 1'b1;
+                ram_write_addr <= cur_addr;
+                ram_write_data <= to_be_stored_unscaled_clipped >>> 16;
                 cur_sample <= sample_in;
 
                 cur_addr <= (cur_addr >= max_addr) ? 0 : cur_addr + 'd1;
@@ -140,8 +175,9 @@ module delay (
             end else begin
                 old_sample <= '0;
                 sample_out_unscaled_valid <= 1'b1;
-                sample_buf[cur_addr] <= sample_in
-                                      * $signed({1'b0, (16'hFFFF - feedback)}) >>> 16;
+                ram_we <= 1'b1;
+                ram_write_addr <= cur_addr;
+                ram_write_data <= input_unscaled_clipped >>> 16;
                 cur_sample <= sample_in;
 
                 cur_addr <= (cur_addr >= max_addr) ? 0 : cur_addr + 'd1;
